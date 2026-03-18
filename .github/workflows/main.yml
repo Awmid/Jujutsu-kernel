@@ -82,9 +82,6 @@ jobs:
 
       - name: Integrate KernelSU-Next
         run: |
-          echo "Integrating KernelSU-Next..."
-          chmod u+x clean.sh
-          ./clean.sh
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
 
       - name: Build kernel
