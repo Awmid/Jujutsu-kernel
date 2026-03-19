@@ -25,6 +25,8 @@
 #include "mount.h"
 
 extern bool susfs_is_current_ksu_domain(void);
+bool susfs_is_avc_log_spoofing_enabled = false;
+EXPORT_SYMBOL(susfs_is_avc_log_spoofing_enabled);
 
 #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
 bool susfs_is_log_enabled __read_mostly = true;
