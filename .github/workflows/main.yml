@@ -72,8 +72,7 @@ jobs:
           GIT_SSL_NO_VERIFY=1 git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git /tmp/gcc-aarch64
 
           echo "Cloning GCC ARM32..."
-          GIT_SSL_NO_VERIFY=1 git clone --depth=1 https://github.com/Linesh
-          eOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git /tmp/gcc-arm
+          GIT_SSL_NO_VERIFY=1 git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git /tmp/gcc-arm
 
       - name: Verify toolchains
         run: |
