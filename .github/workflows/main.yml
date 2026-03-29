@@ -84,7 +84,6 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
           chmod u+x susfs.sh
-          ./susfs.sh
 
       - name: Build kernel
         run: |
