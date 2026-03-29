@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
- *
- * JUJUTSU V5 FIX: Merged XiaoMi 4.9 charging optimizations into 4.19 base
- * This fixes slow charging on custom ROMs by restoring thermal mitigation
- * and proper charging current limits from stock MIUI kernel.
  */
 
 /*
@@ -65,7 +60,6 @@
 #include "mtk_charger.h"
 
 #if CONFIG_TOUCHSCREEN_COMMON
-
 typedef struct touchscreen_usb_piugin_data {
 	bool valid;
 	bool usb_plugged_in;
@@ -77,104 +71,6 @@ touchscreen_usb_piugin_data_t g_touchscreen_usb_pulgin = {0};
 EXPORT_SYMBOL(g_touchscreen_usb_pulgin);
 #endif
 
-/* JUJUTSU V5 FIX: Added XiaoMi thermal mitigation support */
-#define THERMAL_MAX 16
-
-static struct charger_manager *pinfo;
-static struct list_head consumer_head = LIST_HEAD_INIT(consumer_head);
-static DEFINE_MUTEX(consumer_mutex);
-
-/* JUJUTSU V5 FIX: XiaoMi thermal mitigation arrays for proper charging limits */
-static int thermal_mitigation_dcp[THERMAL_MAX] = {2000000, 1900000, 1800000, 1700000, 1600000, 1500000, 1400000, 1300000, 1200000, 1100000, 1000000, 900000, 800000, 700000, 600000, 500000};
-static int thermal_mitigation_qc2[THERMAL_MAX] = {2000000, 2000000, 2000000, 1700000, 1700000, 1500000, 1400000, 1300000, 1300000, 1100000, 1100000, 1100000, 1100000, 700000, 600000, 500000};
-static int thermal_mitigation_qc3[THERMAL_MAX] = {2000000, 2000000, 2000000, 1700000, 1700000, 1500000, 1400000, 1300000, 1300000, 1100000, 1100000, 1100000, 1100000, 700000, 600000, 500000};
-
-/* JUJUTSU V5 FIX: XiaoMi power path support function */
-bool is_power_path_supported(void)
-{
-	if (pinfo == NULL)
-		return false;
-
-	if (pinfo->data.power_path_support == true)
-		return true;
-
-	return false;
-}
-
-/* JUJUTSU V5 FIX: XiaoMi charger disable check */
-bool is_disable_charger(void)
-{
-	if (pinfo == NULL)
-		return true;
-
-	if (pinfo->disable_charger == true || IS_ENABLED(CONFIG_POWER_EXT))
-		return true;
-	else
-		return false;
-}
-
-/* JUJUTSU V5 FIX: XiaoMi USB state management */
-void BATTERY_SetUSBState(int usb_state_value)
-{
-	if (is_disable_charger()) {
-		chr_err("[%s] in FPGA/EVB, no service\n", __func__);
-	} else {
-		if ((usb_state_value < USB_SUSPEND) ||
-			((usb_state_value > USB_CONFIGURED))) {
-			chr_err("%s Fail! Restore to default value\n",
-				__func__);
-			usb_state_value = USB_UNCONFIGURED;
-		} else {
-			chr_err("%s Success! Set %d\n", __func__,
-				usb_state_value);
-			if (pinfo)
-				pinfo->usb_state = usb_state_value;
-		}
-	}
-}
-
-EXPORT_SYMBOL_GPL(BATTERY_SetUSBState);
-
-/* JUJUTSU V5 FIX: XiaoMi charging current limit setter */
-unsigned int set_chr_input_current_limit(int current_limit)
-{
-	return 500;
-}
-
-/* JUJUTSU V5 FIX: XiaoMi temperature management */
-int get_chr_temperature(int *min_temp, int *max_temp)
-{
-	*min_temp = 25;
-	*max_temp = 30;
-
-	return 0;
-}
-
-/* JUJUTSU V5 FIX: XiaoMi boost current limit */
-int set_chr_boost_current_limit(unsigned int current_limit)
-{
-	return 0;
-}
-
-/* JUJUTSU V5 FIX: XiaoMi OTG enable */
-int set_chr_enable_otg(unsigned int enable)
-{
-	return 0;
-}
-
-/* JUJUTSU V5 FIX: XiaoMi charger detection */
-int mtk_chr_is_charger_exist(unsigned char *exist)
-{
-	if (mt_get_charger_type() == CHARGER_UNKNOWN)
-		*exist = 0;
-	else
-		*exist = 1;
-	return 0;
-}
-
-/*=============== fix me==================*/
-int chargerlog_level = CHRLOG_ERROR_LEVEL;
-
 struct tag_bootmode {
 	u32 size;
 	u32 tag;
@@ -184,7 +80,26 @@ struct tag_bootmode {
 
 int chr_get_debug_level(void)
 {
-	return chargerlog_level;
+	struct power_supply *psy;
+	static struct mtk_charger *info;
+	int ret;
+
+	if (info == NULL) {
+		psy = power_supply_get_by_name("mtk-master-charger");
+		if (psy == NULL)
+			ret = CHRLOG_DEBUG_LEVEL;
+		else {
+			info =
+			(struct mtk_charger *)power_supply_get_drvdata(psy);
+			if (info == NULL)
+				ret = CHRLOG_DEBUG_LEVEL;
+			else
+				ret = info->log_level;
+		}
+	} else
+		ret = info->log_level;
+
+	return ret;
 }
 
 void _wake_up_charger(struct mtk_charger *info)
