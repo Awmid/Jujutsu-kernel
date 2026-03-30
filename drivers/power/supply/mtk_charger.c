@@ -70,6 +70,14 @@ typedef struct touchscreen_usb_piugin_data {
 touchscreen_usb_piugin_data_t g_touchscreen_usb_pulgin = {0};
 EXPORT_SYMBOL(g_touchscreen_usb_pulgin);
 #endif
+#define THERMAL_MAX 16
+
+/* JUJUTSU V5: Aggressive thermal mitigation from 4.9 stock */
+static int thermal_mitigation_dcp[THERMAL_MAX] = {2000000, 2000000, 2000000, 1900000, 1800000, 1700000, 1600000, 1500000, 1400000, 1300000, 1200000, 1100000, 1000000, 900000, 800000, 700000};
+
+static int thermal_mitigation_qc2[THERMAL_MAX] = {2000000, 2000000, 2000000, 2000000, 1900000, 1800000, 1700000, 1600000, 1500000, 1400000, 1300000, 1200000, 1100000, 1000000, 900000, 800000};
+
+static int thermal_mitigation_qc3[THERMAL_MAX] = {2000000, 2000000, 2000000, 2000000, 1900000, 1800000, 1700000, 1600000, 1500000, 1400000, 1300000, 1200000, 1100000, 1000000, 900000, 800000};
 
 struct tag_bootmode {
 	u32 size;
@@ -404,7 +412,7 @@ static void mtk_charger_parse_dt(struct mtk_charger *info,
 
 	/* charging current */
 	if (of_property_read_u32(np, "usb_charger_current", &val) >= 0) {
-		info->data.usb_charger_current = val;
+		info->data.usb_charger_current = 2000000;
 	} else {
 		chr_err("use default USB_CHARGER_CURRENT:%d\n",
 			USB_CHARGER_CURRENT);
@@ -412,19 +420,19 @@ static void mtk_charger_parse_dt(struct mtk_charger *info,
 	}
 
 	if (of_property_read_u32(np, "ac_charger_current", &val) >= 0) {
-		info->data.ac_charger_current = val;
+		info->data.ac_charger_current = 2000000;
 	} else {
 		chr_err("use default AC_CHARGER_CURRENT:%d\n",
 			AC_CHARGER_CURRENT);
-		info->data.ac_charger_current = AC_CHARGER_CURRENT;
+		info->data.ac_charger_current = 2000000;
 	}
 
 	if (of_property_read_u32(np, "ac_charger_input_current", &val) >= 0)
-		info->data.ac_charger_input_current = val;
+		info->data.ac_charger_input_current = 2000000;
 	else {
 		chr_err("use default AC_CHARGER_INPUT_CURRENT:%d\n",
 			AC_CHARGER_INPUT_CURRENT);
-		info->data.ac_charger_input_current = AC_CHARGER_INPUT_CURRENT;
+		info->data.ac_charger_input_current = 2000000;
 	}
 
 	if (of_property_read_u32(np, "charging_host_charger_current", &val)
