@@ -130,7 +130,7 @@
 	slave_charger_mtk:slave_charger@4b {
 		compatible = "mediatek,slave_charger";
 		reg = <0x4b>;
-		status = "okay";
+		status = "disabled";
 	};
 
 	nfc_mtk:nfc@08 {
