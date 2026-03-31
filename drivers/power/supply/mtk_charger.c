@@ -70,14 +70,6 @@ typedef struct touchscreen_usb_piugin_data {
 touchscreen_usb_piugin_data_t g_touchscreen_usb_pulgin = {0};
 EXPORT_SYMBOL(g_touchscreen_usb_pulgin);
 #endif
-#define THERMAL_MAX 16
-
-/* JUJUTSU V5: Aggressive thermal mitigation from 4.9 stock */
-static int thermal_mitigation_dcp[THERMAL_MAX] = {2000000, 2000000, 2000000, 1900000, 1800000, 1700000, 1600000, 1500000, 1400000, 1300000, 1200000, 1100000, 1000000, 900000, 800000, 700000};
-
-static int thermal_mitigation_qc2[THERMAL_MAX] = {2000000, 2000000, 2000000, 2000000, 1900000, 1800000, 1700000, 1600000, 1500000, 1400000, 1300000, 1200000, 1100000, 1000000, 900000, 800000};
-
-static int thermal_mitigation_qc3[THERMAL_MAX] = {2000000, 2000000, 2000000, 2000000, 1900000, 1800000, 1700000, 1600000, 1500000, 1400000, 1300000, 1200000, 1100000, 1000000, 900000, 800000};
 
 struct tag_bootmode {
 	u32 size;
@@ -1486,7 +1478,13 @@ static int mtk_charger_plug_in(struct mtk_charger *info,
 		alg = info->alg[i];
 		chg_alg_notifier_call(alg, &notify);
 	}
-
+	
+	/* Set initial current immediately like 4.9 does */
+    charger_dev_set_input_current(info->chg1_dev,
+        info->data.ac_charger_input_current);
+    charger_dev_set_charging_current(info->chg1_dev,
+        info->data.ac_charger_current);
+        
 	charger_dev_plug_in(info->chg1_dev);
 
 	return 0;
