@@ -602,6 +602,14 @@ static int bq2560x_init_device(struct bq2560x *bq)
 	if (ret)
 		pr_err("Failed to set vindpm and iindpm int mask\n");
 
+	ret = bq2560x_set_input_current_limit(bq, 2000);
+    if (ret)
+        pr_err("Failed to set input current limit, ret = %d\n", ret);
+
+    ret = bq2560x_set_chargecurrent(bq, 2048);
+    if (ret)
+        pr_err("Failed to set charge current, ret = %d\n", ret);
+
 	return 0;
 }
 
