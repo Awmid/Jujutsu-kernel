@@ -300,6 +300,8 @@ int get_charger_type(struct mtk_charger *info)
 
 	if (chg_psy == NULL || IS_ERR(chg_psy)) {
 		pr_notice("%s Couldn't get chg_psy\n", __func__);
+		/* If we can't detect anything, assume it's a real charger (DCP) */
+		return POWER_SUPPLY_TYPE_USB_DCP;
 	} else {
 		ret = power_supply_get_property(chg_psy,
 			POWER_SUPPLY_PROP_ONLINE, &prop);
@@ -310,14 +312,17 @@ int get_charger_type(struct mtk_charger *info)
 		ret = power_supply_get_property(chg_psy,
 			POWER_SUPPLY_PROP_USB_TYPE, &prop3);
 
-		if (prop.intval == 0)
+		if (prop.intval == 0) {
 			prop2.intval = POWER_SUPPLY_TYPE_UNKNOWN;
-		else if (prop2.intval == POWER_SUPPLY_TYPE_USB &&
-		    prop3.intval == POWER_SUPPLY_USB_TYPE_UNKNOWN)
-			prop2.intval = POWER_SUPPLY_TYPE_UNKNOWN;
-		else if (prop2.intval == POWER_SUPPLY_TYPE_USB &&
-		    prop3.intval == POWER_SUPPLY_USB_TYPE_DCP)
-			prop2.intval = POWER_SUPPLY_TYPE_USB_FLOAT;
+		} else if (prop2.intval == POWER_SUPPLY_TYPE_USB &&
+		    prop3.intval == POWER_SUPPLY_USB_TYPE_UNKNOWN) {
+			/* Detection failed or ambiguous → treat as real charger, NOT normal USB */
+			prop2.intval = POWER_SUPPLY_TYPE_USB_DCP;
+		} else if (prop2.intval == POWER_SUPPLY_TYPE_USB &&
+		    prop3.intval == POWER_SUPPLY_USB_TYPE_DCP) {
+			prop2.intval = POWER_SUPPLY_TYPE_USB_DCP;
+		}
+		
 	}
 
 	pr_notice("%s online:%d type:%d usb_type:%d\n", __func__,
