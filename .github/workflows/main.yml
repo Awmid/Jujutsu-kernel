@@ -62,7 +62,7 @@ jobs:
           bash clean.sh
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
 
-            - name: Build kernel
+      - name: Build kernel
         run: |
           export PATH="/tmp/clang/bin:/tmp/gcc-aarch64/bin:/tmp/gcc-arm/bin:${PATH}"
 
@@ -167,3 +167,4 @@ jobs:
           name: build-log-${{ github.sha }}
           path: build.log
           retention-days: 7
+          
