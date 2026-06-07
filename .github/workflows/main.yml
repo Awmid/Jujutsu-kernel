@@ -71,14 +71,35 @@ jobs:
           export CROSS_COMPILE_ARM32="arm-linux-androideabi-"
           export CC="clang"
           export CLANG_TRIPLE="aarch64-linux-gnu-"
+          
+          # Force LLD 13 Linker & enable safe compilation optimizations
+          export LD="/tmp/clang/bin/ld.lld"
+          export AR="/tmp/clang/bin/llvm-ar"
+          export NM="/tmp/clang/bin/llvm-nm"
+          export OBJCOPY="/tmp/clang/bin/llvm-objcopy"
+          export OBJDUMP="/tmp/clang/bin/llvm-objdump"
+          export STRIP="/tmp/clang/bin/llvm-strip"
+          
+          # ThinLTO optimization for device smoothness + -O3 compilation profile
+          export KCFLAGS="-O3 -flto=thin"
+          
+          # Constrain RAM utilization to stay within the 7GB boundary
+          export LDFLAGS="-Wl,--thinlto-jobs=2 -Wl,--threads=2 -Wl,--no-rosegment"
 
+          # Generate the baseline configurations
           make O=out ARCH=${ARCH} ${KERNEL_DEFCONFIG}
 
-          echo "Building kernel with KernelSU-Next..."
+          echo "Building kernel with KernelSU-Next & LLD Linker..."
           make -j$(nproc) \
             O=out \
             ARCH=${ARCH} \
             CC=clang \
+            LD=${LD} \
+            AR=${AR} \
+            NM=${NM} \
+            OBJCOPY=${OBJCOPY} \
+            OBJDUMP=${OBJDUMP} \
+            STRIP=${STRIP} \
             CLANG_TRIPLE=${CLANG_TRIPLE} \
             CROSS_COMPILE=${CROSS_COMPILE} \
             CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32} \
