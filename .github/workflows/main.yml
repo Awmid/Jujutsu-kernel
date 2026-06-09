@@ -4,9 +4,6 @@
 name: Build Kernel with KernelSU-SUSFS
 
 on:
-  push:
-    branches:
-      - V5
   pull_request:
   workflow_dispatch:
 
@@ -134,11 +131,90 @@ jobs:
 
           zip -r9 ../Blossom-Kernel-${{ github.sha }}.zip * -x .git README.md *placeholder
 
+      - name: Package Prebuilt Artifacts
+        run: |
+          echo "Creating prebuilt artifacts package..."
+          mkdir -p prebuilt/modules
+          mkdir -p prebuilt/headers
+
+          # Copy kernel image (check all possible names)
+          if [ -f "out/arch/${KERNEL_ARCH}/boot/Image.gz-dtb" ]; then
+            cp out/arch/${KERNEL_ARCH}/boot/Image.gz-dtb prebuilt/kernel
+            echo "✓ Copied Image.gz-dtb as kernel"
+          elif [ -f "out/arch/${KERNEL_ARCH}/boot/Image.gz" ]; then
+            cp out/arch/${KERNEL_ARCH}/boot/Image.gz prebuilt/kernel
+            echo "✓ Copied Image.gz as kernel"
+          elif [ -f "out/arch/${KERNEL_ARCH}/boot/Image" ]; then
+            cp out/arch/${KERNEL_ARCH}/boot/Image prebuilt/kernel
+            echo "✓ Copied Image as kernel"
+          else
+            echo "✗ No kernel image found!"
+            exit 1
+          fi
+
+          # Copy DTB
+          if [ -f "out/arch/${KERNEL_ARCH}/boot/dtb.img" ]; then
+            cp out/arch/${KERNEL_ARCH}/boot/dtb.img prebuilt/
+            echo "✓ Copied dtb.img"
+          else
+            echo "⚠ No dtb.img found"
+          fi
+
+          # Copy DTBO
+          if [ -f "out/arch/${KERNEL_ARCH}/boot/dtbo.img" ]; then
+            cp out/arch/${KERNEL_ARCH}/boot/dtbo.img prebuilt/
+            echo "✓ Copied dtbo.img"
+          else
+            echo "⚠ No dtbo.img found"
+          fi
+
+          # Copy modules
+          MODULES_FOUND=$(find out/ -name "*.ko" -print -quit)
+          if [ -n "$MODULES_FOUND" ]; then
+            find out/ -name "*.ko" -exec cp {} prebuilt/modules/ \;
+            echo "✓ Copied kernel modules"
+          else
+            echo "⚠ No kernel modules found"
+          fi
+
+          # Copy headers (check common locations)
+          if [ -d "out/staging/usr/include" ]; then
+            cp -r out/staging/usr/include prebuilt/headers/
+            echo "✓ Copied headers from out/staging/usr/include"
+          elif [ -d "usr/include" ]; then
+            cp -r usr/include prebuilt/headers/
+            echo "✓ Copied headers from usr/include"
+          else
+            echo "⚠ No headers found"
+          fi
+
+          # List contents for verification
+          echo ""
+          echo "=== Prebuilt package contents ==="
+          ls -lah prebuilt/
+          echo ""
+          echo "=== Modules ==="
+          ls -lah prebuilt/modules/ 2>/dev/null || echo "No modules directory"
+          echo ""
+          echo "=== Headers ==="
+          ls -lah prebuilt/headers/ 2>/dev/null || echo "No headers directory"
+
+          # Create the zip
+          cd prebuilt
+          zip -r9 ../Blossom-Prebuilts-${{ github.sha }}.zip *
+
       - name: Upload AnyKernel package
         uses: actions/upload-artifact@v4
         with:
           name: Blossom-Kernel-Package
           path: Blossom-Kernel-${{ github.sha }}.zip
+          retention-days: 30
+
+      - name: Upload Prebuilt Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Blossom-Prebuilts-Package
+          path: Blossom-Prebuilts-${{ github.sha }}.zip
           retention-days: 30
 
       - name: Upload build log
