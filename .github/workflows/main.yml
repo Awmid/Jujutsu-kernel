@@ -6,7 +6,8 @@ name: Build Kernel with KernelSU-SUSFS
 on:
   pull_request:
   workflow_dispatch:
-  push: V5
+  push: 
+     branches: V5
 
 env:
   KERNEL_DEFCONFIG: "blossom_defconfig"
