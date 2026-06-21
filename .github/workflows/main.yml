@@ -42,7 +42,6 @@ jobs:
       - name: Verify Proton Clang
         run: |
           /tmp/proton-clang/bin/clang --version
-          /tmp/proton-clang/bin/aarch64-linux-gnu-gcc --version
 
       - name: Integrate KernelSU-Next
         run: |
