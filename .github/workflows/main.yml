@@ -62,12 +62,15 @@ jobs:
           make O=out ARCH=${ARCH} ${KERNEL_DEFCONFIG}
 
           echo "Building kernel with KernelSU-Next..."
+          PATH="/tmp/proton-clang/bin:${PATH}" \
           make -j$(nproc) \
             O=out \
             ARCH=${ARCH} \
             LLVM=/tmp/proton-clang/bin/llvm- \
-            LD=/tmp/proton-clang/bin/ld.ldd
-            CC=/tmp/proton-clang/bin/clang \
+            LD=/tmp/proton-clang/bin/ld.ldd \
+            CC=/tmp/proton-clang/bin/clang- \
+            CROSS_COMPILE=/tmp/proton-clang/bin/aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
             2>&1 | tee build.log
 
       - name: Package AnyKernel3
