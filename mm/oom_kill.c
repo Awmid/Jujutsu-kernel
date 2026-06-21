@@ -62,7 +62,7 @@ int sysctl_oom_dump_tasks = 1;
  * and mark_oom_victim
  */
 DEFINE_MUTEX(oom_lock);
-/* Serializes oom_score_adj and oom_score_adj_min updates */
+/* Serializes oom_score_adj_n and oom_score_adj_n_min updates */
 DEFINE_MUTEX(oom_adj_mutex);
 
 #ifdef CONFIG_NUMA
@@ -156,20 +156,20 @@ static inline bool is_memcg_oom(struct oom_control *oc)
 static bool oom_unkillable_task(struct task_struct *p,
 		struct mem_cgroup *memcg, const nodemask_t *nodemask)
 {
-	if (is_global_init(p))
+	/*if (is_global_init(p))
 		return true;
 	if (p->flags & PF_KTHREAD)
-		return true;
+		return true;*/
 
 	/* When mem_cgroup_out_of_memory() and p is not member of the group */
-	if (memcg && !task_in_mem_cgroup(p, memcg))
-		return true;
+	//if (memcg && !task_in_mem_cgroup(p, memcg))
+		//return true;
 
 	/* p may not have freeable memory in nodemask */
-	if (!has_intersects_mems_allowed(p, nodemask))
-		return true;
+	/*if (!has_intersects_mems_allowed(p, nodemask))
+		return true;*/
 
-	return false;
+	return true;
 }
 
 /*
@@ -220,7 +220,7 @@ unsigned long oom_badness(struct task_struct *p, struct mem_cgroup *memcg,
 	 * unkillable or have been already oom reaped or the are in
 	 * the middle of vfork
 	 */
-	adj = (long)p->signal->oom_score_adj;
+	adj = (long)p->signal->oom_score_adj_n;
 	if (adj == OOM_SCORE_ADJ_MIN ||
 			test_bit(MMF_OOM_SKIP, &p->mm->flags) ||
 			in_vfork(p)) {
@@ -236,13 +236,13 @@ unsigned long oom_badness(struct task_struct *p, struct mem_cgroup *memcg,
 		mm_pgtables_bytes(p->mm) / PAGE_SIZE;
 	task_unlock(p);
 
-	/* Normalize to oom_score_adj units */
+	/* Normalize to oom_score_adj_n units */
 	adj *= totalpages / 1000;
 	points += adj;
 
 	/*
 	 * Never return 0 for an eligible task regardless of the root bonus and
-	 * oom_score_adj (oom_score_adj can't be OOM_SCORE_ADJ_MIN here).
+	 * oom_score_adj_n (oom_score_adj_n can't be OOM_SCORE_ADJ_MIN here).
 	 */
 	return points > 0 ? points : 1;
 }
@@ -395,7 +395,7 @@ static void select_bad_process(struct oom_control *oc)
  * memcg, not in the same cpuset, or bound to a disjoint set of mempolicy nodes
  * are not shown.
  * State information includes task's pid, uid, tgid, vm size, rss,
- * pgtables_bytes, swapents, oom_score_adj value, and name.
+ * pgtables_bytes, swapents, oom_score_adj_n value, and name.
  */
 static void dump_tasks(struct mem_cgroup *memcg, const nodemask_t *nodemask)
 {
@@ -403,7 +403,7 @@ static void dump_tasks(struct mem_cgroup *memcg, const nodemask_t *nodemask)
 	struct task_struct *task;
 
 	pr_info("Tasks state (memory values in pages):\n");
-	pr_info("[  pid  ]   uid  tgid total_vm      rss pgtables_bytes swapents oom_score_adj name\n");
+	pr_info("[  pid  ]   uid  tgid total_vm      rss pgtables_bytes swapents oom_score_adj_n name\n");
 	rcu_read_lock();
 	for_each_process(p) {
 		if (oom_unkillable_task(p, memcg, nodemask))
@@ -424,7 +424,7 @@ static void dump_tasks(struct mem_cgroup *memcg, const nodemask_t *nodemask)
 			task->tgid, task->mm->total_vm, get_mm_rss(task->mm),
 			mm_pgtables_bytes(task->mm),
 			get_mm_counter(task->mm, MM_SWAPENTS),
-			task->signal->oom_score_adj, task->comm);
+			task->signal->oom_score_adj_n, task->comm);
 		task_unlock(task);
 	}
 	rcu_read_unlock();
@@ -432,10 +432,10 @@ static void dump_tasks(struct mem_cgroup *memcg, const nodemask_t *nodemask)
 
 static void dump_header(struct oom_control *oc, struct task_struct *p)
 {
-	pr_warn("%s invoked oom-killer: gfp_mask=%#x(%pGg), nodemask=%*pbl, order=%d, oom_score_adj=%hd\n",
+	pr_warn("%s invoked oom-killer: gfp_mask=%#x(%pGg), nodemask=%*pbl, order=%d, oom_score_adj_n=%hd\n",
 		current->comm, oc->gfp_mask, &oc->gfp_mask,
 		nodemask_pr_args(oc->nodemask), oc->order,
-			current->signal->oom_score_adj);
+			current->signal->oom_score_adj_n);
 	if (!IS_ENABLED(CONFIG_COMPACTION) && oc->order)
 		pr_warn("COMPACTION is disabled!!!\n");
 
@@ -913,11 +913,11 @@ static void __oom_kill_process(struct task_struct *victim)
 
 /*
  * Kill provided task unless it's secured by setting
- * oom_score_adj to OOM_SCORE_ADJ_MIN.
+ * oom_score_adj_n to OOM_SCORE_ADJ_MIN.
  */
 static int oom_kill_memcg_member(struct task_struct *task, void *unused)
 {
-	if (task->signal->oom_score_adj != OOM_SCORE_ADJ_MIN &&
+	if (task->signal->oom_score_adj_n != OOM_SCORE_ADJ_MIN &&
 	    !is_global_init(task)) {
 		get_task_struct(task);
 		__oom_kill_process(task);
@@ -1108,7 +1108,7 @@ bool out_of_memory(struct oom_control *oc)
 
 	if (!is_memcg_oom(oc) && sysctl_oom_kill_allocating_task &&
 	    current->mm && !oom_unkillable_task(current, NULL, oc->nodemask) &&
-	    current->signal->oom_score_adj != OOM_SCORE_ADJ_MIN) {
+	    current->signal->oom_score_adj_n != OOM_SCORE_ADJ_MIN) {
 		get_task_struct(current);
 		oc->chosen = current;
 		oom_kill_process(oc, "Out of memory (oom_kill_allocating_task)");

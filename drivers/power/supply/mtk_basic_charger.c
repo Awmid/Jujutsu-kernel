@@ -151,7 +151,7 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 
 	if ((info->bootmode == 1) ||
 	    (info->bootmode == 5)) {
-		pdata->input_current_limit = 200000; /* 200mA */
+		pdata->input_current_limit = info->data.ac_charger_input_current;
 		is_basic = true;
 		goto done;
 	}
@@ -162,8 +162,8 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 		info->chr_type == POWER_SUPPLY_TYPE_USB_CDP)
 		) {
 		/*2020.04.13 longcheer xugui set charging_current_limit start*/
-		pdata->input_current_limit = 500000; /* 500mA */
-		pdata->charging_current_limit = 500000;
+		pdata->input_current_limit = -1;
+		pdata->charging_current_limit = -1;
 		/*2020.04.13 longcheer xugui set charging_current_limit end*/
 		is_basic = true;
 		goto done;
@@ -172,10 +172,9 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 
 	if (info->chr_type == POWER_SUPPLY_TYPE_USB) {
 		pdata->input_current_limit =
-				info->data.usb_charger_current;
-		/* it can be larger */
+					info->data.ac_charger_input_current;
 		pdata->charging_current_limit =
-				info->data.usb_charger_current;
+					info->data.ac_charger_current;
 		is_basic = true;
 	} else if (info->chr_type == POWER_SUPPLY_TYPE_USB_CDP) {
 		pdata->input_current_limit =
@@ -195,11 +194,10 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 			pdata2->charging_current_limit = 2000000;
 		}
 	} else if (info->chr_type == POWER_SUPPLY_TYPE_USB_FLOAT) {
-		/* NONSTANDARD_CHARGER */
 		pdata->input_current_limit =
-			info->data.usb_charger_current;
+					info->data.ac_charger_input_current;
 		pdata->charging_current_limit =
-			info->data.usb_charger_current;
+					info->data.ac_charger_current;
 		is_basic = true;
 	}
 
@@ -253,8 +251,7 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 	if (pdata->thermal_charging_current_limit != -1) {
 		if (pdata->thermal_charging_current_limit <
 			pdata->charging_current_limit) {
-			pdata->charging_current_limit =
-					pdata->thermal_charging_current_limit;
+			pdata->charging_current_limit = -1;
 			info->setting.charging_current_limit1 =
 					pdata->thermal_charging_current_limit;
 		}
@@ -264,8 +261,7 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 	if (pdata->thermal_input_current_limit != -1) {
 		if (pdata->thermal_input_current_limit <
 			pdata->input_current_limit) {
-			pdata->input_current_limit =
-					pdata->thermal_input_current_limit;
+			pdata->input_current_limit = -1;
 			info->setting.input_current_limit1 =
 					pdata->input_current_limit;
 		}
@@ -275,8 +271,7 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 	if (pdata2->thermal_charging_current_limit != -1) {
 		if (pdata2->thermal_charging_current_limit <
 			pdata2->charging_current_limit) {
-			pdata2->charging_current_limit =
-					pdata2->thermal_charging_current_limit;
+			pdata2->charging_current_limit = -1;
 			info->setting.charging_current_limit2 =
 					pdata2->charging_current_limit;
 		}
@@ -286,13 +281,12 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 	if (pdata2->thermal_input_current_limit != -1) {
 		if (pdata2->thermal_input_current_limit <
 			pdata2->input_current_limit) {
-			pdata2->input_current_limit =
-					pdata2->thermal_input_current_limit;
+			pdata2->input_current_limit = -1;
 			info->setting.input_current_limit2 =
 					pdata2->input_current_limit;
 		}
 	} else
-		info->setting.input_current_limit2 = -1;
+		info->setting.input_current_limit2 = -1; 
 
 	if (is_basic == true && pdata->input_current_limit_by_aicl != -1) {
 		if (pdata->input_current_limit_by_aicl <
@@ -304,7 +298,7 @@ done:
 
 	ret = charger_dev_get_min_charging_current(info->chg1_dev, &ichg1_min);
 	if (ret != -ENOTSUPP && pdata->charging_current_limit < ichg1_min) {
-		pdata->charging_current_limit = 0;
+		//pdata->charging_current_limit = 0;
 		chr_err("min_charging_current is too low %d %d\n",
 			pdata->charging_current_limit, ichg1_min);
 		is_basic = true;
@@ -312,7 +306,7 @@ done:
 
 	ret = charger_dev_get_min_input_current(info->chg1_dev, &aicr1_min);
 	if (ret != -ENOTSUPP && pdata->input_current_limit < aicr1_min) {
-		pdata->input_current_limit = 0;
+		//pdata->input_current_limit = 0;
 		chr_err("min_input_current is too low %d %d\n",
 			pdata->input_current_limit, aicr1_min);
 		is_basic = true;
