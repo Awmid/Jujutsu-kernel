@@ -7,7 +7,7 @@
 #include <linux/tracepoint.h>
 #include <trace/events/mmflags.h>
 
-TRACE_EVENT(oom_score_adj_update,
+TRACE_EVENT(oom_score_adj_n_update,
 
 	TP_PROTO(struct task_struct *task),
 
@@ -16,17 +16,17 @@ TRACE_EVENT(oom_score_adj_update,
 	TP_STRUCT__entry(
 		__field(	pid_t,	pid)
 		__array(	char,	comm,	TASK_COMM_LEN )
-		__field(	short,	oom_score_adj)
+		__field(	short,	oom_score_adj_n)
 	),
 
 	TP_fast_assign(
 		__entry->pid = task->pid;
 		memcpy(__entry->comm, task->comm, TASK_COMM_LEN);
-		__entry->oom_score_adj = task->signal->oom_score_adj;
+		__entry->oom_score_adj_n = task->signal->oom_score_adj_n;
 	),
 
-	TP_printk("pid=%d comm=%s oom_score_adj=%hd",
-		__entry->pid, __entry->comm, __entry->oom_score_adj)
+	TP_printk("pid=%d comm=%s oom_score_adj_n=%hd",
+		__entry->pid, __entry->comm, __entry->oom_score_adj_n)
 );
 
 TRACE_EVENT(reclaim_retry_zone,

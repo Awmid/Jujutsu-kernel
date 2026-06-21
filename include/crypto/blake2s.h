@@ -42,8 +42,8 @@ enum blake2s_iv {
 	BLAKE2S_IV7 = 0x5BE0CD19UL,
 };
 
-void blake2s_update(struct blake2s_state *state, const u8 *in, size_t inlen);
-void blake2s_final(struct blake2s_state *state, u8 *out);
+void blake2s_update_n(struct blake2s_state *state, const u8 *in, size_t inlen);
+void blake2s_final_n(struct blake2s_state *state, u8 *out);
 
 static inline void blake2s_init_param(struct blake2s_state *state,
 				      const u32 param)

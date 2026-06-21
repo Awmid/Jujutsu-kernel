@@ -3,7 +3,7 @@
 #define _UAPI__INCLUDE_LINUX_OOM_H
 
 /*
- * /proc/<pid>/oom_score_adj set to OOM_SCORE_ADJ_MIN disables oom killing for
+ * /proc/<pid>/oom_score_adj_n set to OOM_SCORE_ADJ_MIN disables oom killing for
  * pid.
  */
 #define OOM_SCORE_ADJ_MIN	(-1000)

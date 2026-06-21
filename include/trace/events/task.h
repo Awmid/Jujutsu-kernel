@@ -16,19 +16,19 @@ TRACE_EVENT(task_newtask,
 		__field(	pid_t,	pid)
 		__array(	char,	comm, TASK_COMM_LEN)
 		__field( unsigned long, clone_flags)
-		__field(	short,	oom_score_adj)
+		__field(	short,	oom_score_adj_n)
 	),
 
 	TP_fast_assign(
 		__entry->pid = task->pid;
 		memcpy(__entry->comm, task->comm, TASK_COMM_LEN);
 		__entry->clone_flags = clone_flags;
-		__entry->oom_score_adj = task->signal->oom_score_adj;
+		__entry->oom_score_adj_n = task->signal->oom_score_adj_n;
 	),
 
-	TP_printk("pid=%d comm=%s clone_flags=%lx oom_score_adj=%hd",
+	TP_printk("pid=%d comm=%s clone_flags=%lx oom_score_adj_n=%hd",
 		__entry->pid, __entry->comm,
-		__entry->clone_flags, __entry->oom_score_adj)
+		__entry->clone_flags, __entry->oom_score_adj_n)
 );
 
 TRACE_EVENT(task_rename,
@@ -41,19 +41,19 @@ TRACE_EVENT(task_rename,
 		__field(	pid_t,	pid)
 		__array(	char, oldcomm,  TASK_COMM_LEN)
 		__array(	char, newcomm,  TASK_COMM_LEN)
-		__field(	short,	oom_score_adj)
+		__field(	short,	oom_score_adj_n)
 	),
 
 	TP_fast_assign(
 		__entry->pid = task->pid;
 		memcpy(entry->oldcomm, task->comm, TASK_COMM_LEN);
 		strlcpy(entry->newcomm, comm, TASK_COMM_LEN);
-		__entry->oom_score_adj = task->signal->oom_score_adj;
+		__entry->oom_score_adj_n = task->signal->oom_score_adj_n;
 	),
 
-	TP_printk("pid=%d oldcomm=%s newcomm=%s oom_score_adj=%hd",
+	TP_printk("pid=%d oldcomm=%s newcomm=%s oom_score_adj_n=%hd",
 		__entry->pid, __entry->oldcomm,
-		__entry->newcomm, __entry->oom_score_adj)
+		__entry->newcomm, __entry->oom_score_adj_n)
 );
 
 #endif
