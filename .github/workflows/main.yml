@@ -34,38 +34,29 @@ jobs:
           git config --global http.sslVerify false
           git config --global url."https://".insteadOf git://
 
-      - name: Clone crdroid Clang
+      - name: Clone Proton Clang
         run: |
-          echo "Cloning crdroid Clang..."
-          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r428724.git /tmp/clang
+          echo "Cloning Proton Clang..."
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git /tmp/proton-clang
 
-      - name: Clone LineageOS GCC toolchains
+      - name: Verify Proton Clang
         run: |
-          echo "Cloning GCC ARM64..."
-          GIT_SSL_NO_VERIFY=1 git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git /tmp/gcc-aarch64
-
-          echo "Cloning GCC ARM32..."
-          GIT_SSL_NO_VERIFY=1 git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git /tmp/gcc-arm
-
-      - name: Verify toolchains
-        run: |
-          /tmp/clang/bin/clang --version
-          /tmp/gcc-aarch64/bin/aarch64-linux-android-gcc --version
-          /tmp/gcc-arm/bin/arm-linux-androideabi-gcc --version
+          /tmp/proton-clang/bin/clang --version
+          /tmp/proton-clang/bin/aarch64-linux-gnu-gcc --version
 
       - name: Integrate KernelSU-Next
         run: |
           chmod u+x clean.sh
           bash clean.sh
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
-      
+
       - name: Build kernel
         run: |
-          export PATH="/tmp/clang/bin:/tmp/gcc-aarch64/bin:/tmp/gcc-arm/bin:${PATH}"
+          export PATH="/tmp/proton-clang/bin:${PATH}"
 
           export ARCH=${KERNEL_ARCH}
-          export CROSS_COMPILE="aarch64-linux-android-"
-          export CROSS_COMPILE_ARM32="arm-linux-androideabi-"
+          export CROSS_COMPILE="aarch64-linux-gnu-"
+          export CROSS_COMPILE_ARM32="arm-linux-gnueabi-"
           export CC="clang"
           export CLANG_TRIPLE="aarch64-linux-gnu-"
 
@@ -137,7 +128,6 @@ jobs:
           mkdir -p prebuilt/modules
           mkdir -p prebuilt/headers
 
-          # Copy kernel image (check all possible names)
           if [ -f "out/arch/${KERNEL_ARCH}/boot/Image.gz-dtb" ]; then
             cp out/arch/${KERNEL_ARCH}/boot/Image.gz-dtb prebuilt/kernel
             echo "✓ Copied Image.gz-dtb as kernel"
@@ -152,7 +142,6 @@ jobs:
             exit 1
           fi
 
-          # Copy DTB
           if [ -f "out/arch/${KERNEL_ARCH}/boot/dtb.img" ]; then
             cp out/arch/${KERNEL_ARCH}/boot/dtb.img prebuilt/
             echo "✓ Copied dtb.img"
@@ -160,7 +149,6 @@ jobs:
             echo "⚠ No dtb.img found"
           fi
 
-          # Copy DTBO
           if [ -f "out/arch/${KERNEL_ARCH}/boot/dtbo.img" ]; then
             cp out/arch/${KERNEL_ARCH}/boot/dtbo.img prebuilt/
             echo "✓ Copied dtbo.img"
@@ -168,7 +156,6 @@ jobs:
             echo "⚠ No dtbo.img found"
           fi
 
-          # Copy modules
           MODULES_FOUND=$(find out/ -name "*.ko" -print -quit)
           if [ -n "$MODULES_FOUND" ]; then
             find out/ -name "*.ko" -exec cp {} prebuilt/modules/ \;
@@ -177,7 +164,6 @@ jobs:
             echo "⚠ No kernel modules found"
           fi
 
-          # Copy headers (check common locations)
           if [ -d "out/staging/usr/include" ]; then
             cp -r out/staging/usr/include prebuilt/headers/
             echo "✓ Copied headers from out/staging/usr/include"
@@ -188,7 +174,6 @@ jobs:
             echo "⚠ No headers found"
           fi
 
-          # List contents for verification
           echo ""
           echo "=== Prebuilt package contents ==="
           ls -lah prebuilt/
@@ -199,7 +184,6 @@ jobs:
           echo "=== Headers ==="
           ls -lah prebuilt/headers/ 2>/dev/null || echo "No headers directory"
 
-          # Create the zip
           cd prebuilt
           zip -r9 ../Blossom-Prebuilts-${{ github.sha }}.zip *
 
@@ -224,3 +208,4 @@ jobs:
           name: build-log-${{ github.sha }}
           path: build.log
           retention-days: 7
+          
