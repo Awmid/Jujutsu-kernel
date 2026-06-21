@@ -1527,7 +1527,7 @@ static ssize_t mt_gpufreq_opp_freq_proc_write(struct file *file,
 
 	if (kstrtouint(buf, 10, &value) == 0) {
 		if (value == 0) {
-			g_keep_opp_freq_state = false;
+			g_keep_opp_freq_state = true;
 		} else {
 			for (i = 0; i < g_opp_idx_num; i++) {
 				if (value == g_opp_table[i].gpufreq_khz) {
