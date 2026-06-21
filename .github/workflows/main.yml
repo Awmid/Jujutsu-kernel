@@ -54,8 +54,6 @@ jobs:
           export PATH="/tmp/proton-clang/bin:${PATH}"
 
           export ARCH=${KERNEL_ARCH}
-          export CROSS_COMPILE="aarch64-linux-gnu-"
-          export CROSS_COMPILE_ARM32="arm-linux-gnueabi-"
           export CC="clang"
           export CLANG_TRIPLE="aarch64-linux-gnu-"
 
@@ -66,9 +64,6 @@ jobs:
             O=out \
             ARCH=${ARCH} \
             CC=clang \
-            CLANG_TRIPLE=${CLANG_TRIPLE} \
-            CROSS_COMPILE=${CROSS_COMPILE} \
-            CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32} \
             2>&1 | tee build.log
 
       - name: Package AnyKernel3
