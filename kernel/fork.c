@@ -1026,6 +1026,7 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 		goto fail_nocontext;
 
 	mm->user_ns = get_user_ns(user_ns);
+	lru_gen_init_mm(mm);
 	return mm;
 
 fail_nocontext:
@@ -1068,6 +1069,7 @@ static inline void __mmput(struct mm_struct *mm)
 	}
 	if (mm->binfmt)
 		module_put(mm->binfmt->module);
+	lru_gen_del_mm(mm);
 	mmdrop(mm);
 }
 
@@ -1563,8 +1565,8 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 	tty_audit_fork(sig);
 	sched_autogroup_fork(sig);
 
-	sig->oom_score_adj = current->signal->oom_score_adj;
-	sig->oom_score_adj_min = current->signal->oom_score_adj_min;
+	sig->oom_score_adj_n = current->signal->oom_score_adj_n;
+	sig->oom_score_adj_n_min = current->signal->oom_score_adj_n_min;
 
 	mutex_init(&sig->cred_guard_mutex);
 
@@ -1764,7 +1766,7 @@ static int pidfd_create(struct pid *pid)
 	return fd;
 }
 
-static void copy_oom_score_adj(u64 clone_flags, struct task_struct *tsk)
+static void copy_oom_score_adj_n(u64 clone_flags, struct task_struct *tsk)
 {
 	/* Skip if kernel thread */
 	if (!tsk->mm)
@@ -1778,8 +1780,8 @@ static void copy_oom_score_adj(u64 clone_flags, struct task_struct *tsk)
 	mutex_lock(&oom_adj_mutex);
 	set_bit(MMF_MULTIPROCESS, &tsk->mm->flags);
 	/* Update the values in case they were changed after copy_signal */
-	tsk->signal->oom_score_adj = current->signal->oom_score_adj;
-	tsk->signal->oom_score_adj_min = current->signal->oom_score_adj_min;
+	tsk->signal->oom_score_adj_n = current->signal->oom_score_adj_n;
+	tsk->signal->oom_score_adj_n_min = current->signal->oom_score_adj_n_min;
 	mutex_unlock(&oom_adj_mutex);
 }
 
@@ -2250,7 +2252,7 @@ static __latent_entropy struct task_struct *copy_process(
 	trace_task_newtask(p, clone_flags);
 	uprobe_copy_process(p, clone_flags);
 
-	copy_oom_score_adj(clone_flags, p);
+	copy_oom_score_adj_n(clone_flags, p);
 
 	return p;
 
@@ -2402,6 +2404,18 @@ long _do_fork(unsigned long clone_flags,
 		init_completion(&vfork);
 		get_task_struct(p);
 	}
+
+	if (IS_ENABLED(CONFIG_LRU_GEN) && !(clone_flags & CLONE_VM)) {
+		/* lock the task to synchronize with memcg migration */
+		task_lock(p);
+		lru_gen_add_mm(p->mm);
+		task_unlock(p);
+	}
+
+#ifdef CONFIG_PERF_HUMANTASK
+        p->human_task = 0;
+        p->inherit_task = 0;
+#endif
 
 	wake_up_new_task(p);
 

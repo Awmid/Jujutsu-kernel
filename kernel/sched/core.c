@@ -3640,8 +3640,10 @@ context_switch(struct rq *rq, struct task_struct *prev,
 		next->active_mm = oldmm;
 		mmgrab(oldmm);
 		enter_lazy_tlb(oldmm, next);
-	} else
+	} else {
 		switch_mm_irqs_off(oldmm, mm, next);
+		lru_gen_use_mm(mm);
+	}
 
 	if (!prev->mm) {
 		prev->active_mm = NULL;
@@ -5655,7 +5657,7 @@ static bool task_is_unity_game(struct task_struct *p)
 	bool ret = false;
 
 	/* Filter for Android user applications (i.e., positive adj) */
-	if (p->signal->oom_score_adj >= 0) {
+	if (p->signal->oom_score_adj_n >= 0) {
 		rcu_read_lock();
 		for_each_thread(p, t) {
 			/* Check for a UnityMain thread in the thread group */
