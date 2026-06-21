@@ -67,7 +67,7 @@ jobs:
             O=out \
             ARCH=${ARCH} \
             LLVM=/tmp/proton-clang/bin/llvm- \
-            LD=/tmp/proton-clang/bin/ld.ldd \
+            LD=/tmp/proton-clang/bin/ld.lld \
             CC=/tmp/proton-clang/bin/clang \
             CROSS_COMPILE=/tmp/proton-clang/bin/aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi-
