@@ -87,21 +87,15 @@ static struct request *anxiety_latter_request(struct request_queue *q, struct re
 	return list_next_entry(rq, queuelist);
 }
 
-static int anxiety_init_queue(struct request_queue *q, struct elevator_type *elv)
+/* Fixed for Linux 4.19: modern init_fn signature returns a data pointer or ERR_PTR */
+static void *anxiety_init_queue(struct request_queue *q, struct elevator_type *elv)
 {
 	struct anxiety_data *data;
-	struct elevator_queue *eq = elevator_alloc(q, elv);
-
-	if (!eq)
-		return -ENOMEM;
 
 	/* allocate data */
 	data = kmalloc_node(sizeof(*data), GFP_KERNEL, q->node);
-	if (!data) {
-		kobject_put(&eq->kobj);
-		return -ENOMEM;
-	}
-	eq->elevator_data = data;
+	if (!data)
+		return ERR_PTR(-ENOMEM);
 
 	/* initialize data */
 	INIT_LIST_HEAD(&data->queue[READ]);
@@ -109,12 +103,14 @@ static int anxiety_init_queue(struct request_queue *q, struct elevator_type *elv
 	data->writes_starved = 0;
 	data->max_writes_starved = max_writes_starved;
 
-	/* set the elevator to us */
-	spin_lock_irq(q->queue_lock);
-	q->elevator = eq;
-	spin_unlock_irq(q->queue_lock);
+	return data;
+}
 
-	return 0;
+/* Added exit_fn to cleanly free memory allocated during init */
+static void anxiety_exit_queue(struct elevator_queue *e)
+{
+	struct anxiety_data *data = e->elevator_data;
+	kfree(data);
 }
 
 /* sysfs tunables */
@@ -143,13 +139,15 @@ static struct elv_fs_entry anxiety_attrs[] = {
 };
 
 static struct elevator_type elevator_anxiety = {
-	.ops = {
-		.elevator_merge_req_fn	= anxiety_merged_requests,
-		.elevator_dispatch_fn		= anxiety_dispatch,
-		.elevator_add_req_fn		= anxiety_add_request,
-		.elevator_former_req_fn	= anxiety_former_request,
-		.elevator_latter_req_fn	= anxiety_latter_request,
-		.elevator_init_fn				= anxiety_init_queue,
+	/* Fixed for Linux 4.19: wrapped single-queue operations in .ops.sq structure block */
+	.ops.sq = {
+		.elevator_merge_req_fn  = anxiety_merged_requests,
+		.elevator_dispatch_fn   = anxiety_dispatch,
+		.elevator_add_req_fn    = anxiety_add_request,
+		.elevator_former_req_fn = anxiety_former_request,
+		.elevator_latter_req_fn = anxiety_latter_request,
+		.elevator_init_fn       = anxiety_init_queue,
+		.elevator_exit_fn       = anxiety_exit_queue,
 	},
 	.elevator_name = "anxiety",
 	.elevator_attrs = anxiety_attrs,
