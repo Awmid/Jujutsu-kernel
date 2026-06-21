@@ -6,6 +6,7 @@ name: Build Kernel with KernelSU-SUSFS
 on:
   pull_request:
   workflow_dispatch:
+  push: V5
 
 env:
   KERNEL_DEFCONFIG: "blossom_defconfig"
@@ -63,7 +64,9 @@ jobs:
           make -j$(nproc) \
             O=out \
             ARCH=${ARCH} \
-            CC=clang \
+            LLVM=/tmp/proton-clang/bin/llvm- \
+            LD=/tmp/proton-clang/bin/ld.ldd
+            CC=/tmp/proton-clang/bin/clang \
             2>&1 | tee build.log
 
       - name: Package AnyKernel3
