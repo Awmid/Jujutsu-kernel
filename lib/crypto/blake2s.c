@@ -19,7 +19,7 @@
 
 bool blake2s_selftest(void);
 
-void blake2s_update(struct blake2s_state *state, const u8 *in, size_t inlen)
+void blake2s_update_n(struct blake2s_state *state, const u8 *in, size_t inlen)
 {
 	const size_t fill = BLAKE2S_BLOCK_SIZE - state->buflen;
 
@@ -44,9 +44,9 @@ void blake2s_update(struct blake2s_state *state, const u8 *in, size_t inlen)
 	memcpy(state->buf + state->buflen, in, inlen);
 	state->buflen += inlen;
 }
-EXPORT_SYMBOL(blake2s_update);
+EXPORT_SYMBOL(blake2s_update_n);
 
-void blake2s_final(struct blake2s_state *state, u8 *out)
+void blake2s_final_n(struct blake2s_state *state, u8 *out)
 {
 	WARN_ON(IS_ENABLED(DEBUG) && !out);
 	blake2s_set_lastblock(state);
@@ -57,7 +57,7 @@ void blake2s_final(struct blake2s_state *state, u8 *out)
 	memcpy(out, state->h, state->outlen);
 	memzero_explicit(state, sizeof(*state));
 }
-EXPORT_SYMBOL(blake2s_final);
+EXPORT_SYMBOL(blake2s_final_n);
 
 static int __init mod_init(void)
 {
