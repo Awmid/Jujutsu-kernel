@@ -25,6 +25,7 @@
 #include "mount.h"
 
 extern bool susfs_is_current_ksu_domain(void);
+extern struct cred *ksu_cred;
 
 #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
 bool susfs_is_log_enabled __read_mostly = true;
