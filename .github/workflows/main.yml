@@ -55,7 +55,9 @@ jobs:
       - name: Integrate KernelSU-Next
         run: |
           chmod u+x clean.sh
+          chmod u+x syscall_hook.sh
           bash clean.sh
+          bash syscall_hook.sh
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
 
       - name: Build kernel
