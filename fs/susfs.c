@@ -1439,8 +1439,11 @@ void susfs_start_sdcard_monitor_fn(void) {
 
 /* susfs_init */
 void susfs_init(void) {
-	SUSFS_LOGI("susfs is initialized! version: " SUSFS_VERSION " \n");
+	SUSFS_LOGI("Initializing susfs_extra_works\n");
+	INIT_WORK(&susfs_extra_works, susfs_run_extra_works);
+	SUSFS_LOGI("susfs is initialized! version: SUSFS_VERSION \n");
 }
+
 
 /* No module exit is needed becuase it should never be a loadable kernel module */
 //void __init susfs_exit(void)
