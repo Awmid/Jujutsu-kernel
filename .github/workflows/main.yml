@@ -57,9 +57,9 @@ jobs:
           chmod u+x clean.sh
           chmod u+x syscall_hook.sh
           bash clean.sh
-          bash syscall_hook.sh
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
-
+          bash syscall_hook.sh
+          
       - name: Build kernel
         run: |
           export PATH="/tmp/clang/bin:/tmp/gcc-aarch64/bin:/tmp/gcc-arm/bin:${PATH}"
