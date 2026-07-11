@@ -1,4 +1,11 @@
-scheduler that does basic
+menu "I/O Schedulers"
+	depends on BLOCK
+
+config IOSCHED_NOOP
+	tristate "No-op I/O scheduler"
+	default y
+	---help---
+	  The no-op I/O scheduler is a minimal scheduler that does basic
 	  merging and sorting. Its main uses include non-disk based
 	  block devices like memory devices, and specialised software or
 	  hardware environments that do their own scheduling and require
@@ -34,7 +41,8 @@ config IOSCHED_BHAISOME
 	default y
 	---help---
 	  The Bhaisome I/O scheduler is derived from Anxiety, designed
-	  to optimize latency and throughput balance under high-stress, very bhaisome.
+	  to optimize latency and throughput balance under high-stress
+	  workloads. very bhaisome.
 
 choice
 	prompt "Default I/O scheduler"
@@ -98,5 +106,3 @@ config BFQ_GROUP_IOSCHED
 	  or io (cgroups-v2) controller.
 
 endmenu
-
-endif
