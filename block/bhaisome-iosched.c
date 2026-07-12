@@ -6,14 +6,16 @@
  * Patched version for Linux 4.19+ hybrid blk-mq/legacy block layer
  * Fixes: init race, missing merge_fn, null checks, list corruption
  */
+#include <linux/kernel.h>
+#include <linux/fs.h>
 #include <linux/blkdev.h>
+#include <linux/blk-mq.h>
 #include <linux/elevator.h>
 #include <linux/bio.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/list.h>
-#include <linux/rbtree.h>
 
 /* default tunable values */
 static const int max_writes_starved = 16;
@@ -23,8 +25,6 @@ static const int fifo_batch = 16;
 
 struct bhaisome_data {
 	struct list_head queue[2];
-	struct rb_root sort_list[2];
-	struct request *next_rq[2];
 	unsigned int writes_starved;
 	unsigned int batching;
 
@@ -32,296 +32,153 @@ struct bhaisome_data {
 	unsigned int max_writes_starved;
 	int fifo_expire[2];
 	int fifo_batch;
+
+	spinlock_t lock;
+	struct list_head dispatch;
 };
-
-static inline struct rb_root *
-bhaisome_rb_root(struct bhaisome_data *bd, struct request *rq)
-{
-	return &bd->sort_list[rq_data_dir(rq)];
-}
-
-static inline struct request *
-bhaisome_next_rq(struct request *rq)
-{
-	struct rb_node *node = rb_next(&rq->rb_node);
-
-	if (node)
-		return rb_entry_rq(node);
-
-	return NULL;
-}
-
-static void
-bhaisome_add_rq_rb(struct bhaisome_data *bd, struct request *rq)
-{
-	elv_rb_add(bhaisome_rb_root(bd, rq), rq);
-}
-
-static inline void
-bhaisome_del_rq_rb(struct bhaisome_data *bd, struct request *rq)
-{
-	const int data_dir = rq_data_dir(rq);
-
-	if (bd->next_rq[data_dir] == rq)
-		bd->next_rq[data_dir] = bhaisome_next_rq(rq);
-
-	elv_rb_del(bhaisome_rb_root(bd, rq), rq);
-}
-
-static void bhaisome_merged_requests(struct request_queue *q, struct request *rq,
-				  struct request *next)
-{
-	struct bhaisome_data *bd = q->elevator->elevator_data;
-
-	if (!list_empty(&next->queuelist)) {
-		list_del_init(&next->queuelist);
-		if (time_before((unsigned long)next->fifo_time,
-				(unsigned long)rq->fifo_time)) {
-			list_move(&rq->queuelist, &next->queuelist);
-			rq->fifo_time = next->fifo_time;
-		}
-	}
-
-	bhaisome_del_rq_rb(bd, next);
-}
-
-static int bhaisome_allow_merge(struct request_queue *q, struct request *rq,
-				struct bio *bio)
-{
-	return 1;
-}
-
-static enum elv_merge bhaisome_merge(struct request_queue *q, struct request **req,
-			 struct bio *bio)
-{
-	struct bhaisome_data *bd = q->elevator->elevator_data;
-	sector_t sector = bio_end_sector(bio);
-	struct request *__rq;
-
-	__rq = elv_rb_find(&bd->sort_list[bio_data_dir(bio)], sector);
-	if (__rq) {
-		BUG_ON(sector != blk_rq_pos(__rq));
-		if (elv_bio_merge_ok(__rq, bio)) {
-			*req = __rq;
-			return ELEVATOR_FRONT_MERGE;
-		}
-	}
-
-	return ELEVATOR_NO_MERGE;
-}
-
-static void bhaisome_merged_request(struct request_queue *q,
-				    struct request *req, enum elv_merge type)
-{
-	struct bhaisome_data *bd = q->elevator->elevator_data;
-
-	if (type == ELEVATOR_FRONT_MERGE) {
-		elv_rb_del(bhaisome_rb_root(bd, req), req);
-		bhaisome_add_rq_rb(bd, req);
-	}
-}
 
 static __always_inline struct request *bhaisome_choose_request(struct bhaisome_data *bd)
 {
 	bool starved = bd->writes_starved > bd->max_writes_starved;
 
+	/* read */
 	if (!starved && !list_empty(&bd->queue[READ])) {
 		bd->writes_starved++;
 		return list_entry_rq(bd->queue[READ].next);
 	}
 
+	/* write */
 	if (!list_empty(&bd->queue[WRITE])) {
 		bd->writes_starved = 0;
 		return list_entry_rq(bd->queue[WRITE].next);
 	}
 
+	/* all queues are empty */
 	bd->writes_starved = 0;
 	return NULL;
 }
 
-static inline int bhaisome_check_fifo(struct bhaisome_data *bd, int ddir)
+static struct request *bhaisome_dispatch_request(struct blk_mq_hw_ctx *hctx)
 {
-	struct request *rq = rq_entry_fifo(bd->queue[ddir].next);
-
-	if (time_after_eq(jiffies, (unsigned long)rq->fifo_time))
-		return 1;
-
-	return 0;
-}
-
-static struct request *
-bhaisome_fifo_request(struct bhaisome_data *bd, int data_dir)
-{
-	if (list_empty(&bd->queue[data_dir]))
-		return NULL;
-
-	return rq_entry_fifo(bd->queue[data_dir].next);
-}
-
-static struct request *
-bhaisome_sorted_request(struct bhaisome_data *bd, int data_dir)
-{
-	return bd->next_rq[data_dir];
-}
-
-static void
-bhaisome_move_to_dispatch(struct bhaisome_data *bd, struct request *rq)
-{
-	struct request_queue *q = rq->q;
-
-	rq_fifo_clear(rq);
-	bhaisome_del_rq_rb(bd, rq);
-	elv_dispatch_add_tail(q, rq);
-}
-
-static void
-bhaisome_move_request(struct bhaisome_data *bd, struct request *rq)
-{
-	const int data_dir = rq_data_dir(rq);
-
-	bd->next_rq[READ] = NULL;
-	bd->next_rq[WRITE] = NULL;
-	bd->next_rq[data_dir] = bhaisome_next_rq(rq);
-
-	bhaisome_move_to_dispatch(bd, rq);
-}
-
-static int bhaisome_dispatch(struct request_queue *q, int force)
-{
+	struct request_queue *q = hctx->queue;
 	struct bhaisome_data *bd = q->elevator->elevator_data;
-	const int reads = !list_empty(&bd->queue[READ]);
-	const int writes = !list_empty(&bd->queue[WRITE]);
-	struct request *rq, *next_rq;
-	int data_dir;
+	struct request *rq;
 
-	rq = bhaisome_sorted_request(bd, WRITE);
-	if (!rq)
-		rq = bhaisome_sorted_request(bd, READ);
+	spin_lock(&bd->lock);
 
-	if (rq && bd->batching < bd->fifo_batch)
-		goto dispatch_request;
-
-	if (reads) {
-		if (bhaisome_fifo_request(bd, WRITE) &&
-		    (bd->writes_starved++ >= bd->max_writes_starved))
-			goto dispatch_writes;
-
-		data_dir = READ;
-		goto dispatch_find_request;
+	if (!list_empty(&bd->dispatch)) {
+		rq = list_first_entry(&bd->dispatch, struct request, queuelist);
+		list_del_init(&rq->queuelist);
+		goto out;
 	}
 
-	if (writes) {
-dispatch_writes:
-		bd->writes_starved = 0;
-		data_dir = WRITE;
-		goto dispatch_find_request;
-	}
+	rq = bhaisome_choose_request(bd);
+	if (rq)
+		list_del_init(&rq->queuelist);
 
-	return 0;
-
-dispatch_find_request:
-	next_rq = bhaisome_sorted_request(bd, data_dir);
-	if (bhaisome_check_fifo(bd, data_dir) || !next_rq) {
-		rq = bhaisome_fifo_request(bd, data_dir);
-	} else {
-		rq = next_rq;
-	}
-
-	if (!rq)
-		return 0;
-
-	bd->batching = 0;
-
-dispatch_request:
-	bd->batching++;
-	bhaisome_move_request(bd, rq);
-
-	return 1;
+out:
+	spin_unlock(&bd->lock);
+	return rq;
 }
 
-static void bhaisome_add_request(struct request_queue *q, struct request *rq)
+static void bhaisome_insert_request(struct blk_mq_hw_ctx *hctx,
+				    struct request *rq, bool at_head)
 {
+	struct request_queue *q = hctx->queue;
 	struct bhaisome_data *bd = q->elevator->elevator_data;
 	const int dir = rq_data_dir(rq);
 
-	bhaisome_add_rq_rb(bd, rq);
-
-	rq->fifo_time = jiffies + bd->fifo_expire[dir];
-	list_add_tail(&rq->queuelist, &bd->queue[dir]);
+	if (at_head || blk_rq_is_passthrough(rq)) {
+		if (at_head)
+			list_add(&rq->queuelist, &bd->dispatch);
+		else
+			list_add_tail(&rq->queuelist, &bd->dispatch);
+	} else {
+		rq->fifo_time = jiffies + bd->fifo_expire[dir];
+		list_add_tail(&rq->queuelist, &bd->queue[dir]);
+	}
 }
 
-static void bhaisome_remove_request(struct request_queue *q, struct request *rq)
+static void bhaisome_insert_requests(struct blk_mq_hw_ctx *hctx,
+				     struct list_head *list, bool at_head)
 {
+	struct request_queue *q = hctx->queue;
 	struct bhaisome_data *bd = q->elevator->elevator_data;
 
-	rq_fifo_clear(rq);
-	bhaisome_del_rq_rb(bd, rq);
+	spin_lock(&bd->lock);
+	while (!list_empty(list)) {
+		struct request *rq;
+
+		rq = list_first_entry(list, struct request, queuelist);
+		list_del_init(&rq->queuelist);
+		bhaisome_insert_request(hctx, rq, at_head);
+	}
+	spin_unlock(&bd->lock);
 }
 
-static struct request *bhaisome_former_request(struct request_queue *q, struct request *rq)
+static bool bhaisome_has_work(struct blk_mq_hw_ctx *hctx)
 {
-	return elv_rb_former_request(q, rq);
+	struct request_queue *q = hctx->queue;
+	struct bhaisome_data *bd = q->elevator->elevator_data;
+
+	return !list_empty_careful(&bd->dispatch) ||
+	       !list_empty_careful(&bd->queue[READ]) ||
+	       !list_empty_careful(&bd->queue[WRITE]);
 }
 
-static struct request *bhaisome_latter_request(struct request_queue *q, struct request *rq)
+static int bhaisome_init_sched(struct request_queue *q,
+			       struct elevator_type *e)
 {
-	return elv_rb_latter_request(q, rq);
-}
-
-static int bhaisome_init_queue(struct request_queue *q, struct elevator_type *elv)
-{
-	struct bhaisome_data *data;
+	struct bhaisome_data *bd;
 	struct elevator_queue *eq;
 
-	eq = elevator_alloc(q, elv);
+	eq = elevator_alloc(q, e);
 	if (!eq)
 		return -ENOMEM;
 
-	data = kzalloc_node(sizeof(*data), GFP_KERNEL, q->node);
-	if (!data) {
+	bd = kzalloc_node(sizeof(*bd), GFP_KERNEL, q->node);
+	if (!bd) {
 		kobject_put(&eq->kobj);
 		return -ENOMEM;
 	}
-	eq->elevator_data = data;
+	eq->elevator_data = bd;
 
-	INIT_LIST_HEAD(&data->queue[READ]);
-	INIT_LIST_HEAD(&data->queue[WRITE]);
-	data->sort_list[READ] = RB_ROOT;
-	data->sort_list[WRITE] = RB_ROOT;
-	data->writes_starved = 0;
-	data->batching = 0;
-	data->max_writes_starved = max_writes_starved;
-	data->fifo_expire[READ] = read_expire;
-	data->fifo_expire[WRITE] = write_expire;
-	data->fifo_batch = fifo_batch;
+	INIT_LIST_HEAD(&bd->queue[READ]);
+	INIT_LIST_HEAD(&bd->queue[WRITE]);
+	INIT_LIST_HEAD(&bd->dispatch);
+	spin_lock_init(&bd->lock);
+	bd->writes_starved = 0;
+	bd->batching = 0;
+	bd->max_writes_starved = max_writes_starved;
+	bd->fifo_expire[READ] = read_expire;
+	bd->fifo_expire[WRITE] = write_expire;
+	bd->fifo_batch = fifo_batch;
 
-	spin_lock_irq(q->queue_lock);
 	q->elevator = eq;
-	spin_unlock_irq(q->queue_lock);
-
 	return 0;
 }
 
-static void bhaisome_exit_queue(struct elevator_queue *eq)
+static void bhaisome_exit_sched(struct elevator_queue *e)
 {
-	struct bhaisome_data *bd = eq->elevator_data;
+	struct bhaisome_data *bd = e->elevator_data;
 
 	kfree(bd);
 }
 
+/* sysfs tunables */
 static ssize_t bhaisome_max_writes_starved_show(struct elevator_queue *e, char *page)
 {
-	struct bhaisome_data *ad = e->elevator_data;
-
-	return snprintf(page, PAGE_SIZE, "%d\n", ad->max_writes_starved);
+	struct bhaisome_data *bd = e->elevator_data;
+	return snprintf(page, PAGE_SIZE, "%d\n", bd->max_writes_starved);
 }
 
-static ssize_t bhaisome_max_writes_starved_store(struct elevator_queue *e, const char *page, size_t count)
+static ssize_t bhaisome_max_writes_starved_store(struct elevator_queue *e,
+						   const char *page, size_t count)
 {
-	struct bhaisome_data *ad = e->elevator_data;
+	struct bhaisome_data *bd = e->elevator_data;
 	int ret;
 
-	ret = kstrtouint(page, 0, &ad->max_writes_starved);
+	ret = kstrtouint(page, 0, &bd->max_writes_starved);
 	if (ret < 0)
 		return ret;
 
@@ -329,26 +186,20 @@ static ssize_t bhaisome_max_writes_starved_store(struct elevator_queue *e, const
 }
 
 static struct elv_fs_entry bhaisome_attrs[] = {
-	__ATTR(max_writes_starved, 0644, bhaisome_max_writes_starved_show, bhaisome_max_writes_starved_store),
+	__ATTR(max_writes_starved, 0644,
+	       bhaisome_max_writes_starved_show, bhaisome_max_writes_starved_store),
 	__ATTR_NULL
 };
 
 static struct elevator_type elevator_bhaisome = {
-	.ops = {
-		.sq = {
-			.elevator_merge_fn		= bhaisome_merge,
-			.elevator_merged_fn		= bhaisome_merged_request,
-			.elevator_merge_req_fn		= bhaisome_merged_requests,
-			.elevator_allow_bio_merge_fn	= bhaisome_allow_merge,
-			.elevator_dispatch_fn		= bhaisome_dispatch,
-			.elevator_add_req_fn		= bhaisome_add_request,
-			.elevator_former_req_fn		= bhaisome_former_request,
-			.elevator_latter_req_fn		= bhaisome_latter_request,
-			.elevator_init_fn		= bhaisome_init_queue,
-			.elevator_exit_fn		= bhaisome_exit_queue,
-		},
+	.ops.mq = {
+		.insert_requests	= bhaisome_insert_requests,
+		.dispatch_request	= bhaisome_dispatch_request,
+		.has_work		= bhaisome_has_work,
+		.init_sched		= bhaisome_init_sched,
+		.exit_sched		= bhaisome_exit_sched,
 	},
-	.uses_mq = false,
+	.uses_mq = true,
 	.elevator_name = "bhaisome",
 	.elevator_attrs = bhaisome_attrs,
 	.elevator_owner = THIS_MODULE,
