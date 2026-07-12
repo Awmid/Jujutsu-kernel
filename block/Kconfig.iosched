@@ -36,20 +36,7 @@ config CFQ_GROUP_IOSCHED
 	---help---
 	  Enable group IO scheduling in CFQ.
 
-config IOSCHED_BHAISOME
-	tristate "Bhaisome I/O scheduler"
-	default y
-	---help---
-	  The Bhaisome I/O scheduler is derived from Anxiety, designed
-	  to optimize latency and throughput balance under high-stress
-	  workloads. very bhaisome.
 
-choice
-	prompt "Default I/O scheduler"
-	default DEFAULT_BHAISOME
-	help
-	  Select the I/O scheduler which will be used by default for all
-	  block devices.
 
 	config DEFAULT_DEADLINE
 		bool "Deadline" if IOSCHED_DEADLINE=y
@@ -63,7 +50,7 @@ choice
 	config DEFAULT_BHAISOME
 		bool "Bhaisome" if IOSCHED_BHAISOME=y
 
-endchoice
+
 
 config DEFAULT_IOSCHED
 	string
