@@ -41,7 +41,7 @@ bhaisome_rb_root(struct bhaisome_data *bd, struct request *rq)
 }
 
 static inline struct request *
-bhaisome_latter_request(struct request *rq)
+bhaisome_next_rq(struct request *rq)
 {
 	struct rb_node *node = rb_next(&rq->rb_node);
 
@@ -63,7 +63,7 @@ bhaisome_del_rq_rb(struct bhaisome_data *bd, struct request *rq)
 	const int data_dir = rq_data_dir(rq);
 
 	if (bd->next_rq[data_dir] == rq)
-		bd->next_rq[data_dir] = bhaisome_latter_request(rq);
+		bd->next_rq[data_dir] = bhaisome_next_rq(rq);
 
 	elv_rb_del(bhaisome_rb_root(bd, rq), rq);
 }
@@ -159,7 +159,7 @@ bhaisome_fifo_request(struct bhaisome_data *bd, int data_dir)
 }
 
 static struct request *
-bhaisome_next_request(struct bhaisome_data *bd, int data_dir)
+bhaisome_sorted_request(struct bhaisome_data *bd, int data_dir)
 {
 	return bd->next_rq[data_dir];
 }
@@ -181,7 +181,7 @@ bhaisome_move_request(struct bhaisome_data *bd, struct request *rq)
 
 	bd->next_rq[READ] = NULL;
 	bd->next_rq[WRITE] = NULL;
-	bd->next_rq[data_dir] = bhaisome_latter_request(rq);
+	bd->next_rq[data_dir] = bhaisome_next_rq(rq);
 
 	bhaisome_move_to_dispatch(bd, rq);
 }
@@ -194,9 +194,9 @@ static int bhaisome_dispatch(struct request_queue *q, int force)
 	struct request *rq, *next_rq;
 	int data_dir;
 
-	rq = bhaisome_next_request(bd, WRITE);
+	rq = bhaisome_sorted_request(bd, WRITE);
 	if (!rq)
-		rq = bhaisome_next_request(bd, READ);
+		rq = bhaisome_sorted_request(bd, READ);
 
 	if (rq && bd->batching < bd->fifo_batch)
 		goto dispatch_request;
@@ -220,7 +220,7 @@ dispatch_writes:
 	return 0;
 
 dispatch_find_request:
-	next_rq = bhaisome_next_request(bd, data_dir);
+	next_rq = bhaisome_sorted_request(bd, data_dir);
 	if (bhaisome_check_fifo(bd, data_dir) || !next_rq) {
 		rq = bhaisome_fifo_request(bd, data_dir);
 	} else {
@@ -260,12 +260,12 @@ static void bhaisome_remove_request(struct request_queue *q, struct request *rq)
 
 static struct request *bhaisome_former_request(struct request_queue *q, struct request *rq)
 {
-	return elv_rb_former_request(rq);
+	return elv_rb_former_request(q, rq);
 }
 
 static struct request *bhaisome_latter_request(struct request_queue *q, struct request *rq)
 {
-	return elv_rb_latter_request(rq);
+	return elv_rb_latter_request(q, rq);
 }
 
 static int bhaisome_init_queue(struct request_queue *q, struct elevator_type *elv)
