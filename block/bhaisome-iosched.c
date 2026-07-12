@@ -6,6 +6,7 @@
  * blk-mq version for Linux 4.19+ / MTK Helio G25 / eMMC 5.1
  */
 #include <linux/blkdev.h>
+#include <linux/blk-mq.h>
 #include <linux/elevator.h>
 #include <linux/bio.h>
 #include <linux/module.h>
