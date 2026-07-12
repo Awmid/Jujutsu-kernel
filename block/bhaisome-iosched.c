@@ -71,6 +71,8 @@ bhaisome_del_rq_rb(struct bhaisome_data *bd, struct request *rq)
 static void bhaisome_merged_requests(struct request_queue *q, struct request *rq,
 				  struct request *next)
 {
+	struct bhaisome_data *bd = q->elevator->elevator_data;
+
 	if (!list_empty(&next->queuelist)) {
 		list_del_init(&next->queuelist);
 		if (time_before((unsigned long)next->fifo_time,
@@ -80,7 +82,7 @@ static void bhaisome_merged_requests(struct request_queue *q, struct request *rq
 		}
 	}
 
-	bhaisome_del_rq_rb(q->elevator->elevator_data, next);
+	bhaisome_del_rq_rb(bd, next);
 }
 
 static int bhaisome_allow_merge(struct request_queue *q, struct request *rq,
@@ -89,7 +91,7 @@ static int bhaisome_allow_merge(struct request_queue *q, struct request *rq,
 	return 1;
 }
 
-static int bhaisome_merge(struct request_queue *q, struct request **req,
+static enum elv_merge bhaisome_merge(struct request_queue *q, struct request **req,
 			 struct bio *bio)
 {
 	struct bhaisome_data *bd = q->elevator->elevator_data;
@@ -258,16 +260,12 @@ static void bhaisome_remove_request(struct request_queue *q, struct request *rq)
 
 static struct request *bhaisome_former_request(struct request_queue *q, struct request *rq)
 {
-	struct bhaisome_data *bd = q->elevator->elevator_data;
-
-	return elv_rb_former_request(q, rq);
+	return elv_rb_former_request(rq);
 }
 
 static struct request *bhaisome_latter_request(struct request_queue *q, struct request *rq)
 {
-	struct bhaisome_data *bd = q->elevator->elevator_data;
-
-	return elv_rb_latter_request(q, rq);
+	return elv_rb_latter_request(rq);
 }
 
 static int bhaisome_init_queue(struct request_queue *q, struct elevator_type *elv)
