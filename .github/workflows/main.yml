@@ -84,7 +84,7 @@ jobs:
 
       - name: Package AnyKernel3
         run: |
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git anykernel
+          git clone --depth=1 https://github.com/Iam-nishan/anykernel.git anykernel
           cd anykernel
           rm -f zImage *.dtb
 
