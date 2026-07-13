@@ -101,7 +101,7 @@ jobs:
           cp ../out/arch/${KERNEL_ARCH}/boot/dtb*.img . 2>/dev/null || echo "No DTB files"
 
           cat > anykernel.sh << 'EOF'
-          properties() { '
+          properties() {
           kernel.string=Jujutsu Kernel for blossom by Nishan Najmal aka kurama9-tails on XDA
           do.devicecheck=1
           device.name1=blossom
@@ -114,7 +114,7 @@ jobs:
           do.systemless=1
           do.cleanup=1
           do.cleanuponabort=0
-          '; }
+          }
 
           block=/dev/block/by-name/boot;
           is_slot_device=0;
@@ -143,5 +143,3 @@ jobs:
           name: build-log-${{ github.sha }}
           path: build.log
           retention-days: 7
-
-     
