@@ -7955,7 +7955,7 @@ void *__init alloc_large_system_hash(const char *tablename,
 			else
 				table = memblock_virt_alloc_raw(size, 0);
 		} else if (hashdist) {
-			table = __vmalloc(size, gfp_flags);
+			table = __vmalloc(size, gfp_flags, PAGE_KERNEL);
 		} else {
 			/*
 			 * If bucketsize is not a power-of-two, we may free
