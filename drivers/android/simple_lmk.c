@@ -14,6 +14,7 @@
 #include <linux/sort.h>
 #include <linux/vmpressure.h>
 #include <uapi/linux/sched/types.h>
+#include <linux/export.h>
 
 /* The minimum number of pages to free per reclaim */
 #define MIN_FREE_PAGES (CONFIG_ANDROID_SIMPLE_LMK_MINFREE * SZ_1M / PAGE_SIZE)
@@ -452,6 +453,7 @@ void simple_lmk_mm_freed(struct mm_struct *mm)
 	}
 	read_unlock(&mm_free_lock);
 }
+EXPORT_SYMBOL(simple_lmk_mm_freed);
 
 static int simple_lmk_vmpressure_cb(struct notifier_block *nb,
 				    unsigned long pressure, void *data)
