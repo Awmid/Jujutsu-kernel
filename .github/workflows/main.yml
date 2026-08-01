@@ -1,4 +1,4 @@
-name: Build Jujutsu Kernel with KernelSU-Next
+name: Build Jujutsu Kernel with ReSukiSU
 
 on:
   push:
@@ -33,26 +33,18 @@ jobs:
           git config --global http.sslVerify false
           git config --global url."https://".insteadOf git://
 
-      - name: Clone crdroid Clang
+      - name: Clone Proton Clang
         run: |
-          echo "Cloning crdroid Clang..."
-          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r428724.git /tmp/clang
+          echo "Cloning Proton Clang..."
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git /tmp/proton-clang
 
-      - name: Clone LineageOS GCC toolchains
+      - name: Verify Proton Clang
         run: |
-          echo "Cloning GCC ARM64..."
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git /tmp/gcc-aarch64
+          /tmp/proton-clang/bin/clang --version
+          /tmp/proton-clang/bin/aarch64-linux-gnu-ld --version
+          /tmp/proton-clang/bin/aarch64-linux-gnu-gcc --version
 
-          echo "Cloning GCC ARM32..."
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git /tmp/gcc-arm
-
-      - name: Verify toolchains
-        run: |
-          /tmp/clang/bin/clang --version
-          /tmp/gcc-aarch64/bin/aarch64-linux-android-gcc --version
-          /tmp/gcc-arm/bin/arm-linux-androideabi-gcc --version
-
-      - name: Integrate KernelSU-Next
+      - name: Integrate ResukiSU
         run: |
           chmod u+x clean.sh
           bash clean.sh
@@ -60,24 +52,17 @@ jobs:
           
       - name: Build kernel
         run: |
-          export PATH="/tmp/clang/bin:/tmp/gcc-aarch64/bin:/tmp/gcc-arm/bin:${PATH}"
+          make O=out ARCH=${KERNEL_ARCH} ${KERNEL_DEFCONFIG}
 
-          export ARCH=${KERNEL_ARCH}
-          export CROSS_COMPILE="aarch64-linux-android-"
-          export CROSS_COMPILE_ARM32="arm-linux-androideabi-"
-          export CC="clang"
-          export CLANG_TRIPLE="aarch64-linux-gnu-"
-
-          make O=out ARCH=${ARCH} ${KERNEL_DEFCONFIG}
-
-          echo "Building Jujutsu Kernel with KernelSU-Next..."
-          make -j$(nproc) \
+          echo "Building Jujutsu Kernel"
+          PATH="/tmp/proton-clang/bin:${PATH}" \
+          make -j$(nproc --all) \
             O=out \
-            ARCH=${ARCH} \
+            ARCH=${KERNEL_ARCH} \
             CC=clang \
-            CLANG_TRIPLE=${CLANG_TRIPLE} \
-            CROSS_COMPILE=${CROSS_COMPILE} \
-            CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32} \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-android- \
+            CROSS_COMPILE_ARM32=arm-linux-androideabi- \
             2>&1 | tee build.log
 
       - name: Package AnyKernel3
