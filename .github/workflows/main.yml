@@ -3,7 +3,7 @@ name: Build Jujutsu Kernel with KernelSU-Next
 on:
   push:
     branches:
-      - V6
+      - V7
   workflow_dispatch:
 
 env:
