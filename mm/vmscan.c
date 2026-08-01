@@ -117,6 +117,9 @@ struct scan_control {
 	/* Number of pages freed so far during a call to shrink_zones() */
 	unsigned long nr_reclaimed;
 
+	/* Target VMA for reclaim (used by LMK) */
+	struct vm_area_struct *target_vma;
+
 	struct {
 		unsigned int dirty;
 		unsigned int unqueued_dirty;
@@ -1512,6 +1515,7 @@ unsigned long reclaim_clean_pages_from_list(struct zone *zone,
 	struct scan_control sc = {
 		.gfp_mask = GFP_KERNEL,
 		.priority = DEF_PRIORITY,
+		.target_vma = NULL,
 		.may_unmap = 1,
 	};
 	unsigned long ret;
@@ -3223,6 +3227,7 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 	unsigned long nr_reclaimed;
 	struct scan_control sc = {
 		.nr_to_reclaim = SWAP_CLUSTER_MAX,
+		.target_vma = NULL,
 		.gfp_mask = current_gfp_context(gfp_mask),
 		.reclaim_idx = gfp_zone(gfp_mask),
 		.order = order,
@@ -3270,6 +3275,7 @@ unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 {
 	struct scan_control sc = {
 		.nr_to_reclaim = SWAP_CLUSTER_MAX,
+		.target_vma = NULL,
 		.target_mem_cgroup = memcg,
 		.may_writepage = !laptop_mode,
 		.may_unmap = 1,
@@ -3312,6 +3318,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 	unsigned int noreclaim_flag;
 	struct scan_control sc = {
 		.nr_to_reclaim = max(nr_pages, SWAP_CLUSTER_MAX),
+		.target_vma = NULL,
 		.gfp_mask = (current_gfp_context(gfp_mask) & GFP_RECLAIM_MASK) |
 				(GFP_HIGHUSER_MOVABLE & ~GFP_RECLAIM_MASK),
 		.reclaim_idx = MAX_NR_ZONES - 1,
@@ -3506,6 +3513,7 @@ static int balance_pgdat(pg_data_t *pgdat, int order, int classzone_idx)
 	struct zone *zone;
 	struct scan_control sc = {
 		.gfp_mask = GFP_KERNEL,
+		.target_vma = NULL,
 		.order = order,
 		.priority = DEF_PRIORITY,
 		.may_writepage = !laptop_mode,
