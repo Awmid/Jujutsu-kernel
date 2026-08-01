@@ -38,13 +38,21 @@ jobs:
           echo "Cloning Proton Clang..."
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git /tmp/proton-clang
 
-      - name: Verify Proton Clang
+      - name: Clone GCC toolchains
+        run: |
+          echo "Cloning GCC ARM64..."
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git /tmp/gcc-aarch64
+
+          echo "Cloning GCC ARM32..."
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git /tmp/gcc-arm
+
+      - name: Verify toolchains
         run: |
           /tmp/proton-clang/bin/clang --version
-          /tmp/proton-clang/bin/aarch64-linux-gnu-ld --version
-          /tmp/proton-clang/bin/aarch64-linux-gnu-gcc --version
+          /tmp/gcc-aarch64/bin/aarch64-linux-android-gcc --version
+          /tmp/gcc-arm/bin/arm-linux-androideabi-gcc --version
 
-      - name: Integrate ResukiSU
+      - name: Integrate ReSukiSU
         run: |
           chmod u+x clean.sh
           bash clean.sh
@@ -54,8 +62,8 @@ jobs:
         run: |
           make O=out ARCH=${KERNEL_ARCH} ${KERNEL_DEFCONFIG}
 
-          echo "Building Jujutsu Kernel"
-          PATH="/tmp/proton-clang/bin:${PATH}" \
+          echo "Building Jujutsu Kernel with ReSukiSU using Proton Clang..."
+          PATH="/tmp/proton-clang/bin:/tmp/gcc-aarch64/bin:/tmp/gcc-arm/bin:${PATH}" \
           make -j$(nproc --all) \
             O=out \
             ARCH=${KERNEL_ARCH} \
@@ -118,7 +126,7 @@ jobs:
       - name: Upload AnyKernel package
         uses: actions/upload-artifact@v7
         with:
-          name: Jujutsu-Kernel-KSU
+          name: Jujutsu-Kernel-ReSukiSU
           path: Jujutsu-Kernel-${{ github.sha }}.zip
           archive: false
           retention-days: 30
