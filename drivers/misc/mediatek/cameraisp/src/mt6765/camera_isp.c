@@ -39,6 +39,7 @@
 #include <linux/init.h>
 #include <linux/printk.h>
 #include <linux/ktime.h>
+#include <linux/sched/clock.h> /* For cpu_clock() */
 
 #include <mt-plat/sync_write.h> /* For mt65xx_reg_sync_writel(). */
 
