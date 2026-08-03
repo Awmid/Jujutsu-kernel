@@ -29,7 +29,6 @@
 #include <linux/uaccess.h>
 #include <linux/atomic.h>
 #include <linux/sched.h>
-#include <linux/sched/clock.h>
 #include <linux/mm.h>
 #include <linux/vmalloc.h>
 #include <linux/of_platform.h>
@@ -134,13 +133,13 @@ static u32 target_clk;
 /*#define ENABLE_WAITIRQ_LOG*/       /* wait irq debug logs */
 /*#define ENABLE_STT_IRQ_LOG*/       /*show STT irq debug logs */
 /* Queue timestamp for deque. Update when non-drop frame @SOF */
-#define TIMESTAMP_QUEUE_EN          (0)
+#define TIMESTAMP_QUEUE_EN          (1)
 #if (TIMESTAMP_QUEUE_EN == 1)
 #define TSTMP_SUBSAMPLE_INTPL		(1)
 #else
 #define TSTMP_SUBSAMPLE_INTPL		(0)
 #endif
-#define ISP_BOTTOMHALF_WORKQ		(1)
+#define ISP_BOTTOMHALF_WORKQ		(0)
 
 #if (ISP_BOTTOMHALF_WORKQ == 1)
 #include <linux/workqueue.h>
@@ -503,7 +502,7 @@ static struct isp_sec_dapc_reg lock_reg;
 static unsigned int sec_on;
 #endif
 
-#define AEE_DUMP_BY_USING_ION_MEMORY
+//#define AEE_DUMP_BY_USING_ION_MEMORY
 #define AEE_DUMP_REDUCE_MEMORY
 #ifdef AEE_DUMP_REDUCE_MEMORY
 /* ion */
@@ -640,7 +639,11 @@ static /*volatile*/ wait_queue_head_t P2WaitQueueHead_WaitDeque;
 static /*volatile*/ wait_queue_head_t P2WaitQueueHead_WaitFrame;
 static /*volatile*/ wait_queue_head_t P2WaitQueueHead_WaitFrameEQDforDQ;
 static spinlock_t      SpinLock_P2FrameList;
+#ifdef CONFIG_MTK_ENABLE_GMO
+#define _MAX_SUPPORT_P2_FRAME_NUM_ 256
+#else
 #define _MAX_SUPPORT_P2_FRAME_NUM_ 512
+#endif
 #define _MAX_SUPPORT_P2_BURSTQ_NUM_ 8
 #define _MAX_SUPPORT_P2_PACKAGE_NUM_ \
 	(_MAX_SUPPORT_P2_FRAME_NUM_/_MAX_SUPPORT_P2_BURSTQ_NUM_)
@@ -690,7 +693,11 @@ static  spinlock_t      SpinLockRegScen;
 
 /* maximum number for supporting user to do interrupt operation */
 /* index 0 is for all the user that do not do register irq first */
+#if defined(CONFIG_MTK_ENABLE_GMO)
+#define IRQ_USER_NUM_MAX 16
+#else
 #define IRQ_USER_NUM_MAX 32
+#endif
 static  spinlock_t      SpinLock_UserKey;
 
 #if (TIMESTAMP_QUEUE_EN == 1)
@@ -735,13 +742,26 @@ int pr_detect_count;
 #define ENABLE_KEEP_ION_HANDLE
 
 #ifdef ENABLE_KEEP_ION_HANDLE
-#define _ion_keep_max_   (64)/*32*/
+#ifdef CONFIG_MTK_ENABLE_GMO
+#define _ion_keep_max_   (32)
+#else
+#define _ion_keep_max_   (64)
+#endif
 #include "ion_drv.h" /*g_ion_device*/
 static struct ion_client *pIon_client;
+#ifdef CONFIG_MTK_ENABLE_GMO
+struct ISP_ION_CACHE {
+	signed int IonCt[_dma_max_wr_*_ion_keep_max_];
+	signed int IonFd[_dma_max_wr_*_ion_keep_max_];
+	struct ion_handle *IonHnd[_dma_max_wr_*_ion_keep_max_];
+};
+static struct ISP_ION_CACHE *G_WRDMA_IonCache[2];
+#else
 static signed int G_WRDMA_IonCt[2][_dma_max_wr_*_ion_keep_max_] = { {0}, {0} };
 static signed int G_WRDMA_IonFd[2][_dma_max_wr_*_ion_keep_max_] = { {0}, {0} };
 static struct ion_handle *G_WRDMA_IonHnd[2][_dma_max_wr_*_ion_keep_max_]
 			= { {NULL}, {NULL} };
+#endif
 /* protect G_WRDMA_IonHnd & G_WRDMA_IonFd */
 static spinlock_t SpinLock_IonHnd[2][_dma_max_wr_];
 
@@ -758,6 +778,12 @@ static struct T_ION_TBL gION_TBL[ISP_DEV_NODE_NUM] = {
 	{ISP_DEV_NODE_NUM, NULL, NULL, NULL, NULL},
 	{ISP_DEV_NODE_NUM, NULL, NULL, NULL, NULL},
 	{ISP_DEV_NODE_NUM, NULL, NULL, NULL, NULL},
+#ifdef CONFIG_MTK_ENABLE_GMO
+	{ISP_CAM_A_IDX, NULL, NULL, NULL,
+	 (spinlock_t *)SpinLock_IonHnd[0]},
+	{ISP_CAM_B_IDX, NULL, NULL, NULL,
+	 (spinlock_t *)SpinLock_IonHnd[1]},
+#else
 	{ISP_CAM_A_IDX, (signed int *)G_WRDMA_IonCt[0],
 	 (signed int *)G_WRDMA_IonFd[0],
 	 (struct ion_handle **)G_WRDMA_IonHnd[0],
@@ -766,6 +792,7 @@ static struct T_ION_TBL gION_TBL[ISP_DEV_NODE_NUM] = {
 	 (signed int *)G_WRDMA_IonFd[1],
 	 (struct ion_handle **)G_WRDMA_IonHnd[1],
 	 (spinlock_t *)SpinLock_IonHnd[1]},
+#endif
 	{ISP_DEV_NODE_NUM, NULL, NULL, NULL, NULL},
 	{ISP_DEV_NODE_NUM, NULL, NULL, NULL, NULL},
 	{ISP_DEV_NODE_NUM, NULL, NULL, NULL, NULL},
@@ -848,19 +875,25 @@ struct ISP_IRQ_INFO_STRUCT {
 	/* flag for indicating that user do mark for a interrupt or not */
 	unsigned int    MarkedFlag[ISP_IRQ_TYPE_AMOUNT][ISP_IRQ_ST_AMOUNT]
 				[IRQ_USER_NUM_MAX];
+#ifndef CONFIG_MTK_ENABLE_GMO
 	/* time for marking a specific interrupt */
 	unsigned int    MarkedTime_sec[ISP_IRQ_TYPE_AMOUNT][32]
 				[IRQ_USER_NUM_MAX];
 	/* time for marking a specific interrupt */
 	unsigned int    MarkedTime_usec[ISP_IRQ_TYPE_AMOUNT][32]
 				[IRQ_USER_NUM_MAX];
+#endif
+#ifndef CONFIG_MTK_ENABLE_GMO
 	/* number of a specific signal that passed by */
 	signed int     PassedBySigCnt[ISP_IRQ_TYPE_AMOUNT][32]
 				[IRQ_USER_NUM_MAX];
+#endif
+#ifndef CONFIG_MTK_ENABLE_GMO
 	/* */
 	unsigned int    LastestSigTime_sec[ISP_IRQ_TYPE_AMOUNT][32];
 	/* latest time for each interrupt */
 	unsigned int    LastestSigTime_usec[ISP_IRQ_TYPE_AMOUNT][32];
+#endif
 	/* latest time for each interrupt */
 };
 
@@ -874,7 +907,11 @@ struct ISP_TIME_LOG_STRUCT {
 };
 
 #if (TIMESTAMP_QUEUE_EN == 1)
+#if defined(CONFIG_MTK_ENABLE_GMO)
+#define ISP_TIMESTPQ_DEPTH      (64)
+#else
 #define ISP_TIMESTPQ_DEPTH      (256)
+#endif
 struct ISP_TIMESTPQ_INFO_STRUCT {
 	struct {
 		struct S_START_T   TimeQue[ISP_TIMESTPQ_DEPTH];
@@ -950,7 +987,7 @@ struct ISP_INFO_STRUCT {
 	struct ISP_BUF_INFO_STRUCT			BufInfo;
 	struct ISP_TIME_LOG_STRUCT             TimeLog;
 	#if (TIMESTAMP_QUEUE_EN == 1)
-	struct ISP_TIMESTPQ_INFO_STRUCT        TstpQInfo[ISP_IRQ_TYPE_AMOUNT];
+	struct ISP_TIMESTPQ_INFO_STRUCT        TstpQInfo[CAM_AMOUNT];
 	#endif
 };
 
@@ -1000,7 +1037,11 @@ static struct SV_LOG_STR gSvLog[ISP_IRQ_TYPE_AMOUNT];
 	usec = do_div(sec, 1000000);\
 }
 
-#if 1
+#if defined(CONFIG_MTK_ENABLE_GMO)
+#define IRQ_LOG_KEEPER(irq, ppb, logT, fmt, args...) do { } while (0)
+#define IRQ_LOG_KEEPER_PR_ERR(irq, ppb, logT, fmt, args...) \
+	pr_err_ratelimited(fmt, ##args)
+#elif 1
 #define IRQ_LOG_KEEPER(irq_in, ppb_in, logT_in, fmt, ...) do {\
 	char *ptr; \
 	char *pDes;\
@@ -1167,7 +1208,10 @@ static struct SV_LOG_STR gSvLog[ISP_IRQ_TYPE_AMOUNT];
 		pr_err(IRQTag fmt,  ##args)
 #endif
 
-#if 1
+#if defined(CONFIG_MTK_ENABLE_GMO)
+#define IRQ_LOG_PRINTER(irq, ppb, logT) do { } while (0)
+#define IRQ_LOG_PRINTER_PR_ERR(irq, ppb, logT) do { } while (0)
+#elif 1
 #define IRQ_LOG_PRINTER(irq, ppb_in, logT_in) do {\
 	struct SV_LOG_STR *pSrc = &gSvLog[irq];\
 	char *ptr;\
@@ -4957,7 +5001,8 @@ static long ISP_REF_CNT_CTRL_FUNC(unsigned long Param)
 				ref_cnt_ctrl.ctrl, ref_cnt_ctrl.id);
 
 		/*  */
-		if (ref_cnt_ctrl.id < ISP_REF_CNT_ID_MAX) {
+		if (ref_cnt_ctrl.id < ISP_REF_CNT_ID_MAX &&
+		    ref_cnt_ctrl.id >= 0) {
 			/* //////////////////---add lock here */
 			spin_lock(&(IspInfo.SpinLockIspRef));
 			/* ////////////////// */
@@ -5130,12 +5175,14 @@ static long ISP_Buf_CTRL_FUNC(unsigned long Param)
 					rt_buf_ctrl.module, rt_dma);
 			/*  */
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 			memset((void *)IspInfo.IrqInfo.LastestSigTime_usec
 				[rt_buf_ctrl.module],
 				0, sizeof(unsigned int) * 32);
 			memset((void *)IspInfo.IrqInfo.LastestSigTime_sec
 				[rt_buf_ctrl.module],
 				0, sizeof(unsigned int) * 32);
+#endif
 			/* remove, cause clear will be involked only when
 			 * current module r totally stopped
 			 */
@@ -5421,7 +5468,7 @@ static signed int ISP_P2_BufQue_Update_ListCIdx(
  *
  *****************************************************************************/
 static signed int ISP_P2_BufQue_Erase(enum ISP_P2_BUFQUE_PROPERTY propertyU,
-enum ISP_P2_BUFQUE_LIST_TAG listTag, signed int idx)
+enum ISP_P2_BUFQUE_LIST_TAG listTag, signed int idxU)
 {
 	signed int ret =  -1;
 	bool stop = false;
@@ -5429,7 +5476,13 @@ enum ISP_P2_BUFQUE_LIST_TAG listTag, signed int idx)
 	signed int cnt = 0;
 	int tmpIdx = 0;
 	unsigned int property = 0;
+	unsigned int idx = 0;
 
+	if (idxU < 0) {
+		pr_info("idxU abnormal error(%d)\n", idxU);
+		return ret;
+	}
+	idx = idxU;
 	property = propertyU;
 
 	switch (listTag) {
@@ -5442,43 +5495,44 @@ enum ISP_P2_BUFQUE_LIST_TAG listTag, signed int idx)
 		P2_FramePackage_List[property][idx].frameNum = 0;
 		P2_FramePackage_List[property][idx].dequedNum = 0;
 		/* [2] update first index */
-		if (P2_FramePackage_List[property][tmpIdx].dupCQIdx == -1) {
-			/* traverse count needed, cuz user may erase the */
-			/* element but not the one at first idx */
-			/* (pip or vss scenario) */
-			if (P2_FramePack_List_Idx[property].start <=
-			P2_FramePack_List_Idx[property].end) {
-				cnt = P2_FramePack_List_Idx[property].end -
-					P2_FramePack_List_Idx[property].start;
-			} else {
-				cnt = _MAX_SUPPORT_P2_PACKAGE_NUM_ -
-					P2_FramePack_List_Idx[property].start;
-				cnt += P2_FramePack_List_Idx[property].end;
-			}
-			do { /* to find the newest first lindex */
-				tmpIdx = (tmpIdx + 1) %
-					_MAX_SUPPORT_P2_PACKAGE_NUM_;
-				switch (
-				P2_FramePackage_List[property][tmpIdx].
-				dupCQIdx){
-				case (-1):
-					break;
-				default:
-					stop = true;
-					P2_FramePack_List_Idx[property].start =
-						tmpIdx;
-					break;
+		if (tmpIdx >= 0) {
+			if (P2_FramePackage_List[property][tmpIdx].dupCQIdx == -1) {
+				/* traverse count needed, cuz user may erase the */
+				/* element but not the one at first idx */
+				/* (pip or vss scenario) */
+				if (P2_FramePack_List_Idx[property].start <=
+				P2_FramePack_List_Idx[property].end) {
+					cnt = P2_FramePack_List_Idx[property].end -
+						P2_FramePack_List_Idx[property].start;
+				} else {
+					cnt = _MAX_SUPPORT_P2_PACKAGE_NUM_ -
+						P2_FramePack_List_Idx[property].start;
+					cnt += P2_FramePack_List_Idx[property].end;
 				}
-				i++;
-			} while ((i < cnt) && (!stop));
-			/* current last erased element in list is the one */
-			/* firstBufindex point at and all the buffer node */
-			/* are deque done in the current moment, should */
-			/* update first index to the last node */
-			if ((!stop) && (i == cnt))
-				P2_FramePack_List_Idx[property].start =
-					P2_FramePack_List_Idx[property].end;
+				do { /* to find the newest first lindex */
+					tmpIdx = (tmpIdx + 1) %
+						_MAX_SUPPORT_P2_PACKAGE_NUM_;
+					switch (
+					P2_FramePackage_List[property][tmpIdx].dupCQIdx){
+					case (-1):
+						break;
+					default:
+						stop = true;
+						P2_FramePack_List_Idx[property].start =
+							tmpIdx;
+						break;
+					}
+					i++;
+				} while ((i < cnt) && (!stop));
+				/* current last erased element in list is the one */
+				/* firstBufindex point at and all the buffer node */
+				/* are deque done in the current moment, should */
+				/* update first index to the last node */
+				if ((!stop) && (i == cnt))
+					P2_FramePack_List_Idx[property].start =
+						P2_FramePack_List_Idx[property].end;
 
+			}
 		}
 		break;
 	case ISP_P2_BUFQUE_LIST_TAG_UNIT:
@@ -5489,50 +5543,51 @@ enum ISP_P2_BUFQUE_LIST_TAG listTag, signed int idx)
 		P2_FrameUnit_List[property][idx].cqMask =  0x0;
 		P2_FrameUnit_List[property][idx].bufSts = ISP_P2_BUF_STATE_NONE;
 		/* [2]update first index */
-		if (P2_FrameUnit_List[property][tmpIdx].bufSts ==
-		ISP_P2_BUF_STATE_NONE) {
-			/* traverse count needed, cuz user may erase the */
-			/* element but not the one at first idx */
-			if (P2_FrameUnit_List_Idx[property].start <=
-			P2_FrameUnit_List_Idx[property].end) {
-				cnt = P2_FrameUnit_List_Idx[property].end -
-					P2_FrameUnit_List_Idx[property].start;
-			} else {
-				cnt = _MAX_SUPPORT_P2_FRAME_NUM_ -
-					P2_FrameUnit_List_Idx[property].start;
-				cnt += P2_FrameUnit_List_Idx[property].end;
-			}
-			/* to find the newest first lindex */
-			do {
-				tmpIdx = (tmpIdx + 1) %
-					_MAX_SUPPORT_P2_FRAME_NUM_;
-				switch (
-				P2_FrameUnit_List[property][tmpIdx].bufSts) {
-				case ISP_P2_BUF_STATE_ENQUE:
-				case ISP_P2_BUF_STATE_RUNNING:
-				case ISP_P2_BUF_STATE_DEQUE_SUCCESS:
-					stop = true;
-					P2_FrameUnit_List_Idx[property].start =
-						tmpIdx;
-					break;
-				case ISP_P2_BUF_STATE_WAIT_DEQUE_FAIL:
-				case ISP_P2_BUF_STATE_DEQUE_FAIL:
-					/* ASSERT */
-					break;
-				case ISP_P2_BUF_STATE_NONE:
-				default:
-					break;
+		if (tmpIdx >= 0) {
+			if (P2_FrameUnit_List[property][tmpIdx].bufSts ==
+			ISP_P2_BUF_STATE_NONE) {
+				/* traverse count needed, cuz user may erase the */
+				/* element but not the one at first idx */
+				if (P2_FrameUnit_List_Idx[property].start <=
+				P2_FrameUnit_List_Idx[property].end) {
+					cnt = P2_FrameUnit_List_Idx[property].end -
+						P2_FrameUnit_List_Idx[property].start;
+				} else {
+					cnt = _MAX_SUPPORT_P2_FRAME_NUM_ -
+						P2_FrameUnit_List_Idx[property].start;
+					cnt += P2_FrameUnit_List_Idx[property].end;
 				}
-				i++;
-			} while ((i < cnt) && (!stop));
-			/* current last erased element in list is the one */
-			/* firstBufindex point at and all the buffer node are */
-			/* deque done in the current moment, should */
-			/* update first index to the last node */
-			if ((!stop) && (i == (cnt)))
-				P2_FrameUnit_List_Idx[property].start =
-					P2_FrameUnit_List_Idx[property].end;
-
+				/* to find the newest first lindex */
+				do {
+					tmpIdx = (tmpIdx + 1) %
+						_MAX_SUPPORT_P2_FRAME_NUM_;
+					switch (
+					P2_FrameUnit_List[property][tmpIdx].bufSts) {
+					case ISP_P2_BUF_STATE_ENQUE:
+					case ISP_P2_BUF_STATE_RUNNING:
+					case ISP_P2_BUF_STATE_DEQUE_SUCCESS:
+						stop = true;
+						P2_FrameUnit_List_Idx[property].start =
+							tmpIdx;
+						break;
+					case ISP_P2_BUF_STATE_WAIT_DEQUE_FAIL:
+					case ISP_P2_BUF_STATE_DEQUE_FAIL:
+						/* ASSERT */
+						break;
+					case ISP_P2_BUF_STATE_NONE:
+					default:
+						break;
+					}
+					i++;
+				} while ((i < cnt) && (!stop));
+				/* current last erased element in list is the one */
+				/* firstBufindex point at and all the buffer node are */
+				/* deque done in the current moment, should */
+				/* update first index to the last node */
+				if ((!stop) && (i == (cnt)))
+					P2_FrameUnit_List_Idx[property].start =
+						P2_FrameUnit_List_Idx[property].end;
+			}
 		}
 		break;
 	default:
@@ -5767,29 +5822,42 @@ static inline unsigned int ISP_P2_BufQue_WaitEventState(
 {
 	unsigned int ret = MFALSE;
 	signed int index = -1;
+	unsigned int local_idx = 0;
 	unsigned int property;
 
 	if (param.property >= ISP_P2_BUFQUE_PROPERTY_NUM) {
 		pr_err("property err(%d)\n", param.property);
 		return ret;
 	}
+
 	property = param.property;
+
 	/*  */
 	switch (type) {
 	case ISP_P2_BUFQUE_MATCH_TYPE_WAITDQ:
-		spin_lock(&(SpinLock_P2FrameList));
 		index = *idx;
-		if (P2_FrameUnit_List[property][index].bufSts ==
+		if (index < 0) {
+			pr_info("index abnormal error(%d) 1\n", index);
+			return ret;
+		}
+		spin_lock(&(SpinLock_P2FrameList));
+		local_idx = index;
+		if (P2_FrameUnit_List[property][local_idx].bufSts ==
 		    ISP_P2_BUF_STATE_RUNNING)
 			ret = MTRUE;
 
 		spin_unlock(&(SpinLock_P2FrameList));
 		break;
 	case ISP_P2_BUFQUE_MATCH_TYPE_WAITFM:
-		spin_lock(&(SpinLock_P2FrameList));
 		index = *idx;
-		if (P2_FramePackage_List[property][index].dequedNum ==
-		    P2_FramePackage_List[property][index].frameNum)
+		if (index < 0) {
+			pr_info("index abnormal error(%d) 2\n", index);
+			return ret;
+		}
+		spin_lock(&(SpinLock_P2FrameList));
+		local_idx = index;
+		if (P2_FramePackage_List[property][local_idx].dequedNum ==
+		    P2_FramePackage_List[property][local_idx].frameNum)
 			ret = MTRUE;
 
 		spin_unlock(&(SpinLock_P2FrameList));
@@ -6327,17 +6395,21 @@ static signed int ISP_REGISTER_IRQ_USERKEY(char *userName)
 static signed int ISP_MARK_IRQ(struct ISP_WAIT_IRQ_STRUCT *irqinfo)
 {
 	unsigned long flags;
-	int idx = my_get_pow_idx(irqinfo->EventInfo.Status);
+	unsigned int idx = my_get_pow_idx(irqinfo->EventInfo.Status);
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 	unsigned long long  sec = 0;
 	unsigned long       usec = 0;
+#endif
 
-	if (irqinfo->Type >= ISP_IRQ_TYPE_AMOUNT) {
+	if (irqinfo->Type >= ISP_IRQ_TYPE_AMOUNT ||
+	    irqinfo->Type < 0) {
 		pr_err("MARK_IRQ: type error(%d)", irqinfo->Type);
 		return -EFAULT;
 	}
 
-	if (irqinfo->EventInfo.St_type >= ISP_IRQ_ST_AMOUNT) {
+	if (irqinfo->EventInfo.St_type >= ISP_IRQ_ST_AMOUNT ||
+	    irqinfo->EventInfo.St_type < 0) {
 		pr_err("MARK_IRQ: st_type error(%d)",
 			irqinfo->EventInfo.St_type);
 		return -EFAULT;
@@ -6350,11 +6422,6 @@ static signed int ISP_MARK_IRQ(struct ISP_WAIT_IRQ_STRUCT *irqinfo)
 		return -EFAULT;
 	}
 
-	if ((idx < 0) || (idx >= 32)) {
-		pr_info("[Error] %s : Invalid idx = %d",  __func__, idx);
-		return -EFAULT;
-	}
-
 	if (irqinfo->EventInfo.St_type == SIGNAL_INT) {
 		/* 1. enable marked flag */
 		spin_lock_irqsave(&(IspInfo.SpinLockIrq[irqinfo->Type]), flags);
@@ -6364,7 +6431,8 @@ static signed int ISP_MARK_IRQ(struct ISP_WAIT_IRQ_STRUCT *irqinfo)
 		spin_unlock_irqrestore(
 			&(IspInfo.SpinLockIrq[irqinfo->Type]), flags);
 
-		/* 2. record mark time */
+		/* 2. record mark time for the legacy timing query */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		sec = cpu_clock(0);     /* ns */
 		do_div(sec, 1000);    /* usec */
 		usec = do_div(sec, 1000000);    /* sec and usec */
@@ -6376,17 +6444,22 @@ static signed int ISP_MARK_IRQ(struct ISP_WAIT_IRQ_STRUCT *irqinfo)
 			[irqinfo->EventInfo.UserKey] = (unsigned int)sec;
 		spin_unlock_irqrestore(
 			&(IspInfo.SpinLockIrq[irqinfo->Type]), flags);
+#endif
 
 		/* 3. clear passed by signal count */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		spin_lock_irqsave(&(IspInfo.SpinLockIrq[irqinfo->Type]), flags);
 		IspInfo.IrqInfo.PassedBySigCnt[irqinfo->Type][idx]
 					      [irqinfo->EventInfo.UserKey] = 0;
 		spin_unlock_irqrestore(&(IspInfo.SpinLockIrq[irqinfo->Type]),
 					flags);
+#endif
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 		pr_debug("[MARK]  key/type/sts/idx (%d/%d/0x%x/%d), t(%d/%d)\n",
 		irqinfo->EventInfo.UserKey, irqinfo->Type,
 		irqinfo->EventInfo.Status, idx, (int)sec, (int)usec);
+#endif
 
 	} else {
 		pr_err("Not support DMA interrupt type(%d), Only support signal interrupt!!!",
@@ -6598,7 +6671,7 @@ static signed int ISP_WaitIrq(struct ISP_WAIT_IRQ_STRUCT *WaitIrq)
 	signed int Ret = 0, Timeout = WaitIrq->EventInfo.Timeout;
 	unsigned long flags;
 	unsigned int irqStatus;
-	int idx;
+	unsigned int idx;
 	bool freeze_passbysigcnt = false;
 
 	if ((WaitIrq->Type >= ISP_IRQ_TYPE_AMOUNT) ||
@@ -6905,21 +6978,20 @@ EXIT:
 				      [WaitIrq->EventInfo.St_type]
 				      [WaitIrq->EventInfo.UserKey]) {
 		idx = my_get_pow_idx(WaitIrq->EventInfo.Status);
-		if ((idx < 0) || (idx >= 32)) {
-			pr_info("[Error] : Invalid idx = %d", idx);
-			Ret = -EFAULT;
-			return Ret;
-		}
 		IspInfo.IrqInfo.MarkedFlag[WaitIrq->Type]
 					  [WaitIrq->EventInfo.St_type]
 					  [WaitIrq->EventInfo.UserKey] &=
 						(~WaitIrq->EventInfo.Status);
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.MarkedTime_usec[WaitIrq->Type][idx]
 					      [WaitIrq->EventInfo.UserKey] = 0;
 		IspInfo.IrqInfo.MarkedTime_sec[WaitIrq->Type][idx]
 					      [WaitIrq->EventInfo.UserKey] = 0;
+#endif
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.PassedBySigCnt[WaitIrq->Type][idx]
 					      [WaitIrq->EventInfo.UserKey] = 0;
+#endif
 	}
 	spin_unlock_irqrestore(&(IspInfo.SpinLockIrq[WaitIrq->Type]), flags);
 
@@ -6932,13 +7004,71 @@ EXIT:
 /******************************************************************************
  *
  *****************************************************************************/
+#ifdef CONFIG_MTK_ENABLE_GMO
+static int ISP_ion_alloc_cache(void)
+{
+	int i;
+
+	if (G_WRDMA_IonCache[0])
+		return 0;
+
+	for (i = 0; i < ARRAY_SIZE(G_WRDMA_IonCache); i++) {
+		G_WRDMA_IonCache[i] =
+			kvzalloc(sizeof(*G_WRDMA_IonCache[i]), GFP_KERNEL);
+		if (!G_WRDMA_IonCache[i])
+			goto err;
+	}
+
+	gION_TBL[ISP_CAM_A_IDX].pIonCt = G_WRDMA_IonCache[0]->IonCt;
+	gION_TBL[ISP_CAM_A_IDX].pIonFd = G_WRDMA_IonCache[0]->IonFd;
+	gION_TBL[ISP_CAM_A_IDX].pIonHnd = G_WRDMA_IonCache[0]->IonHnd;
+	gION_TBL[ISP_CAM_B_IDX].pIonCt = G_WRDMA_IonCache[1]->IonCt;
+	gION_TBL[ISP_CAM_B_IDX].pIonFd = G_WRDMA_IonCache[1]->IonFd;
+	gION_TBL[ISP_CAM_B_IDX].pIonHnd = G_WRDMA_IonCache[1]->IonHnd;
+	return 0;
+
+err:
+	while (--i >= 0) {
+		kvfree(G_WRDMA_IonCache[i]);
+		G_WRDMA_IonCache[i] = NULL;
+	}
+	return -ENOMEM;
+}
+
+static void ISP_ion_free_cache(void)
+{
+	int i;
+
+	gION_TBL[ISP_CAM_A_IDX].pIonCt = NULL;
+	gION_TBL[ISP_CAM_A_IDX].pIonFd = NULL;
+	gION_TBL[ISP_CAM_A_IDX].pIonHnd = NULL;
+	gION_TBL[ISP_CAM_B_IDX].pIonCt = NULL;
+	gION_TBL[ISP_CAM_B_IDX].pIonFd = NULL;
+	gION_TBL[ISP_CAM_B_IDX].pIonHnd = NULL;
+
+	for (i = 0; i < ARRAY_SIZE(G_WRDMA_IonCache); i++) {
+		kvfree(G_WRDMA_IonCache[i]);
+		G_WRDMA_IonCache[i] = NULL;
+	}
+}
+#endif
+
 static void ISP_ion_init(void)
 {
+#ifdef CONFIG_MTK_ENABLE_GMO
+	if (ISP_ion_alloc_cache()) {
+		pr_err("failed to allocate ion handle cache\n");
+		return;
+	}
+#endif
 	if (!pIon_client && g_ion_device)
 		pIon_client = ion_client_create(g_ion_device, "camera_isp");
 
 	if (!pIon_client) {
 		pr_err("invalid ion client!\n");
+#ifdef CONFIG_MTK_ENABLE_GMO
+		ISP_ion_free_cache();
+#endif
 		return;
 	}
 
@@ -6953,6 +7083,9 @@ static void ISP_ion_uninit(void)
 {
 	if (!pIon_client) {
 		pr_err("invalid ion client!\n");
+#ifdef CONFIG_MTK_ENABLE_GMO
+		ISP_ion_free_cache();
+#endif
 		return;
 	}
 
@@ -6962,6 +7095,9 @@ static void ISP_ion_uninit(void)
 	ion_client_destroy(pIon_client);
 
 	pIon_client = NULL;
+#ifdef CONFIG_MTK_ENABLE_GMO
+	ISP_ion_free_cache();
+#endif
 }
 
 /******************************************************************************
@@ -7022,6 +7158,9 @@ static void ISP_ion_free_handle_by_module(unsigned int module)
 	signed int nFd;
 	struct ion_handle *p_IonHnd;
 	struct T_ION_TBL *ptbl = &gION_TBL[module];
+
+	if (!ptbl->pIonFd)
+		return;
 
 	if (IspInfo.DebugMask & ISP_DBG_ION_CTRL)
 		pr_info("[ion_free_hd_by_module]%d\n", module);
@@ -8120,9 +8259,18 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 			unsigned long long reg_trans_Time;
 			unsigned long long sum;
 
+			ccu_get_timestamp(&hwTickCnt_ccu_direct[0],
+				&hwTickCnt_ccu_direct[1]);
+
+			pr_debug("hwTickCnt_ccu_direct[0]:%u,hwTickCnt_ccu_direct[1]:%u",
+				hwTickCnt_ccu_direct[0],
+				hwTickCnt_ccu_direct[1]);
+
 			sum =
 			(unsigned long long)hwTickCnt_ccu_direct[0] +
 			((unsigned long long)hwTickCnt_ccu_direct[1]<<32);
+
+			pr_debug("sum of hwTickCnt:%llu", sum);
 
 			if (sum == 0) {
 				globaltime[0] = 0;
@@ -9461,16 +9609,22 @@ pr_info("- E. register IRQ: done\n");
 				IspInfo.IrqInfo.Status[i][j][q] = 0;
 				IspInfo.IrqInfo.MarkedFlag[i][j][q] = 0;
 				for (p = 0; p < 32; p++) {
+#ifndef CONFIG_MTK_ENABLE_GMO
 					IspInfo.IrqInfo.
 					    MarkedTime_sec[i][p][q] = 0;
 					IspInfo.IrqInfo.
 					    MarkedTime_usec[i][p][q] = 0;
+#endif
+#ifndef CONFIG_MTK_ENABLE_GMO
 					IspInfo.IrqInfo.
 					    PassedBySigCnt[i][p][q] = 0;
+#endif
+#ifndef CONFIG_MTK_ENABLE_GMO
 					IspInfo.IrqInfo.
 					    LastestSigTime_sec[i][p] = 0;
 					IspInfo.IrqInfo.
 					    LastestSigTime_usec[i][p] = 0;
+#endif
 				}
 			}
 		}
@@ -10026,6 +10180,8 @@ static signed int ISP_probe(struct platform_device *pDev)
 	struct device *dev = NULL;
 #endif
 
+	pr_info("- E. ISP driver probe.\n");
+
 	/* Get platform_device parameters */
 #ifdef CONFIG_OF
 
@@ -10077,6 +10233,10 @@ static signed int ISP_probe(struct platform_device *pDev)
 		return -ENOMEM;
 	}
 
+	pr_info("nr_isp_devs=%d, devnode(%s), map_addr=0x%lx\n",
+		nr_isp_devs, pDev->dev.of_node->name,
+		(unsigned long)isp_dev->regs);
+
 	/* get IRQ ID and request IRQ */
 	isp_dev->irq = irq_of_parse_and_map(pDev->dev.of_node, 0);
 
@@ -10106,6 +10266,12 @@ static signed int ISP_probe(struct platform_device *pDev)
 					);
 					return Ret;
 				}
+
+				pr_info(
+					"nr_isp_devs=%d, devnode(%s), irq=%d, ISR: %s\n",
+					nr_isp_devs, pDev->dev.of_node->name,
+					isp_dev->irq,
+					IRQ_CB_TBL[i].device_name);
 				break;
 			}
 		}
@@ -10346,6 +10512,8 @@ EXIT:
 			ISP_UnregCharDev();
 
 	}
+
+	pr_info("- X. ISP driver probe.\n");
 
 	return Ret;
 }
@@ -11193,6 +11361,7 @@ static signed int __init ISP_Init(void)
 				     "mediatek,smi_larb%d", i) < 0) {
 				pr_info("[Error] snprintf failed\n");
 			}
+			pr_info("Finding SMI_LARB compatible: %s\n", comp_str);
 
 			node = of_find_compatible_node(NULL, NULL, comp_str);
 			if (!node) {
@@ -11205,6 +11374,7 @@ static signed int __init ISP_Init(void)
 				pr_err("unable to map ISP_SENINF0_BASE registers!!!\n");
 				break;
 			}
+			pr_info("SMI_LARB%d_BASE: %p\n", i, SMI_LARB_BASE[i]);
 		}
 
 		/* if (comp_str) coverity: no need if, kfree is safe */
@@ -11221,6 +11391,7 @@ static signed int __init ISP_Init(void)
 		pr_err("unable to map ISP_SENINF0_BASE registers!!!\n");
 		return -ENODEV;
 	}
+	pr_info("ISP_SENINF0_BASE: %p\n", ISP_SENINF0_BASE);
 
 	node = of_find_compatible_node(NULL, NULL, "mediatek,seninf2");
 	if (!node) {
@@ -11232,6 +11403,7 @@ static signed int __init ISP_Init(void)
 		pr_err("unable to map ISP_SENINF1_BASE registers!!!\n");
 		return -ENODEV;
 	}
+	pr_info("ISP_SENINF1_BASE: %p\n", ISP_SENINF1_BASE);
 
 	node = of_find_compatible_node(NULL, NULL, "mediatek,seninf3");
 	if (!node) {
@@ -11243,6 +11415,7 @@ static signed int __init ISP_Init(void)
 		pr_err("unable to map ISP_SENINF2_BASE registers!!!\n");
 		return -ENODEV;
 	}
+	pr_info("ISP_SENINF2_BASE: %p\n", ISP_SENINF2_BASE);
 
 	node = of_find_compatible_node(NULL, NULL, "mediatek,seninf4");
 	if (!node) {
@@ -11254,6 +11427,7 @@ static signed int __init ISP_Init(void)
 		pr_err("unable to map ISP_SENINF3_BASE registers!!!\n");
 		return -ENODEV;
 	}
+	pr_info("ISP_SENINF3_BASE: %p\n", ISP_SENINF3_BASE);
 
 	node = of_find_compatible_node(NULL, NULL, "mediatek,mt6765-apmixedsys");
 	if (!node) {
@@ -11265,6 +11439,7 @@ static signed int __init ISP_Init(void)
 		pr_err("unable to map CLOCK_CELL_BASE registers!!!\n");
 		return -ENODEV;
 	}
+	pr_info("CLOCK_CELL_BASE: %p\n", CLOCK_CELL_BASE);
 
 	node = of_find_compatible_node(NULL, NULL, "mediatek,mmsys_config");
 	if (!node) {
@@ -11276,6 +11451,7 @@ static signed int __init ISP_Init(void)
 		pr_err("unable to map ISP_MMSYS_CONFIG_BASE registers!!!\n");
 		return -ENODEV;
 	}
+	pr_info("ISP_MMSYS_CONFIG_BASE: %p\n", ISP_MMSYS_CONFIG_BASE);
 
 	/* FIX-ME: linux-3.10 procfs API changed */
 	proc_create("driver/isp_reg", 0444, NULL, &fcameraisp_proc_fops);
@@ -11343,6 +11519,7 @@ static signed int __init ISP_Init(void)
 
 
 	/* isr log */
+#ifndef CONFIG_MTK_ENABLE_GMO
 	if (PAGE_SIZE < ((ISP_IRQ_TYPE_AMOUNT * NORMAL_STR_LEN *
 	   ((DBG_PAGE + INF_PAGE + ERR_PAGE) + 1))*LOG_PPNUM)) {
 		i = 0;
@@ -11375,6 +11552,7 @@ static signed int __init ISP_Init(void)
 		/* log buffer ,in case of overflow */
 		tmp = (void *)((char *)tmp + NORMAL_STR_LEN);
 	}
+#endif
 	/* mark the pages reserved , FOR MMAP*/
 	for (j = 0; j < ISP_IRQ_TYPE_AMOUNT; j++) {
 		if (pTbl_RTBuf[j] != NULL) {
@@ -11388,25 +11566,31 @@ static signed int __init ISP_Init(void)
 
 #ifndef EP_CODE_MARK_CMDQ
 	/* Register ISP callback */
+	pr_info("register isp callback for MDP");
 	cmdqCoreRegisterCB(CMDQ_GROUP_ISP,
 			   ISP_MDPClockOnCallback,
 			   ISP_MDPDumpCallback,
 			   ISP_MDPResetCallback,
 			   ISP_MDPClockOffCallback);
 	/* Register GCE callback for dumping ISP register */
+	pr_info("register isp callback for GCE");
 	cmdqCoreRegisterDebugRegDumpCB(ISP_BeginGCECallback,
 				ISP_EndGCECallback);
 #endif
 	/* m4u_enable_tf(M4U_PORT_CAM_IMGI, 0);*/
 
 #ifdef _MAGIC_NUM_ERR_HANDLING_
+	pr_info("init m_LastMNum");
 	for (i = 0; i < _cam_max_; i++)
 		m_LastMNum[i] = 0;
 
 #endif
+
+
 	for (i = 0; i < ISP_DEV_NODE_NUM; i++)
 		SuspnedRecord[i] = 0;
 
+	pr_info("- X. Ret: %d.", Ret);
 	return Ret;
 }
 
@@ -12278,6 +12462,9 @@ static int32_t ISP_PushBufTimestamp(unsigned int module, unsigned int dma_id,
 static int32_t ISP_PopBufTimestamp(unsigned int module, unsigned int dma_id,
 			struct S_START_T *pTstp)
 {
+	if (module > ISP_IRQ_TYPE_INT_CAM_B_ST)
+		return -EFAULT;
+
 	switch (module) {
 	case ISP_IRQ_TYPE_INT_CAM_A_ST:
 	case ISP_IRQ_TYPE_INT_CAM_B_ST:
@@ -12339,6 +12526,9 @@ static int32_t ISP_WaitTimestampReady(unsigned int module, unsigned int dma_id)
 {
 	unsigned int _timeout = 0;
 	unsigned int wait_cnt = 0;
+
+	if (module > ISP_IRQ_TYPE_INT_CAM_B_ST || dma_id >= _cam_max_)
+		return -EFAULT;
 
 	if (IspInfo.TstpQInfo[module].Dmao[dma_id].TotalWrCnt >
 	    IspInfo.TstpQInfo[module].Dmao[dma_id].TotalRdCnt)
@@ -12414,7 +12604,7 @@ static int32_t ISP_CompensateMissingSofTime(enum ISP_DEV_NODE_ENUM reg_module,
 			unsigned int frmPeriod)
 {
 	union FBC_CTRL_2  fbc_ctrl2;
-	unsigned int     delta_wcnt = 0, wridx = 0
+	unsigned int     delta_wcnt = 0, wridx = 0;
 	unsigned int     wridx_prev1 = 0, wridx_prev2 = 0, i = 0;
 	unsigned int     delta_time = 0, max_delta_time = 0;
 	struct S_START_T   time_prev1, time_prev2;
@@ -12802,10 +12992,12 @@ irqreturn_t ISP_Irq_CAMSV_0(signed int  Irq, void *DeviceId)
 		/* update pass1 done time stamp for eis user(need match with the
 		 * time stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][10] =
 			(unsigned int)(usec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][10] =
 			(unsigned int)(sec);
+#endif
 
 		if (IspInfo.DebugMask & ISP_DBG_INT) {
 			IRQ_LOG_KEEPER(module, m_CurrentPPB, _LOG_INF,
@@ -12885,10 +13077,12 @@ irqreturn_t ISP_Irq_CAMSV_0(signed int  Irq, void *DeviceId)
 		/* update SOF time stamp for eis user(need match with the time
 		 * stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][12] =
 			(unsigned int)(sec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][12] =
 			(unsigned int)(usec);
+#endif
 
 		/* sw sof counter */
 		sof_count[module]++;
@@ -12903,6 +13097,7 @@ irqreturn_t ISP_Irq_CAMSV_0(signed int  Irq, void *DeviceId)
 		/* 1. update interrupt status to all users */
 		IspInfo.IrqInfo.Status[module][SIGNAL_INT][i] |= IrqStatus;
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 		/* 2. update signal time and passed by signal count */
 		if (IspInfo.IrqInfo.MarkedFlag[module][SIGNAL_INT][i] &
 		    IspInfo.IrqInfo.Mask[module][SIGNAL_INT]) {
@@ -12916,8 +13111,10 @@ irqreturn_t ISP_Irq_CAMSV_0(signed int  Irq, void *DeviceId)
 					IspInfo.IrqInfo.LastestSigTime_sec
 					    [module][cnt] =
 						(unsigned int) time_frmb.tv_sec;
+#ifndef CONFIG_MTK_ENABLE_GMO
 					IspInfo.IrqInfo.PassedBySigCnt
 					    [module][cnt][i]++;
+#endif
 				}
 				tmp = tmp >> 1;
 				cnt++;
@@ -12927,6 +13124,7 @@ irqreturn_t ISP_Irq_CAMSV_0(signed int  Irq, void *DeviceId)
 			 * this irq type
 			 */
 		}
+#endif
 	}
 	spin_unlock(&(IspInfo.SpinLockIrq[module]));
 	/*  */
@@ -13028,10 +13226,12 @@ irqreturn_t ISP_Irq_CAMSV_1(signed int  Irq, void *DeviceId)
 		/* update pass1 done time stamp for eis user(need match with the
 		 * time stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][10] =
 			(unsigned int)(usec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][10] =
 			(unsigned int)(sec);
+#endif
 
 		if (IspInfo.DebugMask & ISP_DBG_INT) {
 			IRQ_LOG_KEEPER(module, m_CurrentPPB, _LOG_INF,
@@ -13110,10 +13310,12 @@ irqreturn_t ISP_Irq_CAMSV_1(signed int  Irq, void *DeviceId)
 		/* update SOF time stamp for eis user(need match with the time
 		 * stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][12] =
 			(unsigned int)(sec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][12] =
-			    (unsigned int)(usec);
+			(unsigned int)(usec);
+#endif
 
 		/* sw sof counter */
 		sof_count[module]++;
@@ -13128,6 +13330,7 @@ irqreturn_t ISP_Irq_CAMSV_1(signed int  Irq, void *DeviceId)
 		/* 1. update interrupt status to all users */
 		IspInfo.IrqInfo.Status[module][SIGNAL_INT][i] |= IrqStatus;
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 		/* 2. update signal time and passed by signal count */
 		if (IspInfo.IrqInfo.MarkedFlag[module][SIGNAL_INT][i] &
 		    IspInfo.IrqInfo.Mask[module][SIGNAL_INT]) {
@@ -13141,8 +13344,10 @@ irqreturn_t ISP_Irq_CAMSV_1(signed int  Irq, void *DeviceId)
 					IspInfo.IrqInfo.LastestSigTime_sec
 					    [module][cnt] =
 						(unsigned int) time_frmb.tv_sec;
+#ifndef CONFIG_MTK_ENABLE_GMO
 					IspInfo.IrqInfo.PassedBySigCnt
 					    [module][cnt][i]++;
+#endif
 				}
 				tmp = tmp >> 1;
 				cnt++;
@@ -13152,6 +13357,7 @@ irqreturn_t ISP_Irq_CAMSV_1(signed int  Irq, void *DeviceId)
 			 * this irq type
 			 */
 		}
+#endif
 	}
 	spin_unlock(&(IspInfo.SpinLockIrq[module]));
 	/*  */
@@ -13253,10 +13459,12 @@ irqreturn_t ISP_Irq_CAMSV_2(signed int  Irq, void *DeviceId)
 		/* update pass1 done time stamp for eis user(need match with
 		 * the time stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][10] =
 			(unsigned int)(usec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][10] =
 			(unsigned int)(sec);
+#endif
 
 		if (IspInfo.DebugMask & ISP_DBG_INT) {
 			IRQ_LOG_KEEPER(module, m_CurrentPPB, _LOG_INF,
@@ -13336,10 +13544,12 @@ irqreturn_t ISP_Irq_CAMSV_2(signed int  Irq, void *DeviceId)
 		/* update SOF time stamp for eis user(need match with the time
 		 * stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][12] =
 			(unsigned int)(sec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][12] =
 			(unsigned int)(usec);
+#endif
 
 		/* sw sof counter */
 		sof_count[module]++;
@@ -13354,6 +13564,7 @@ irqreturn_t ISP_Irq_CAMSV_2(signed int  Irq, void *DeviceId)
 		/* 1. update interrupt status to all users */
 		IspInfo.IrqInfo.Status[module][SIGNAL_INT][i] |= IrqStatus;
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 		/* 2. update signal time and passed by signal count */
 		if (IspInfo.IrqInfo.MarkedFlag[module][SIGNAL_INT][i] &
 		    IspInfo.IrqInfo.Mask[module][SIGNAL_INT]) {
@@ -13367,8 +13578,10 @@ irqreturn_t ISP_Irq_CAMSV_2(signed int  Irq, void *DeviceId)
 					IspInfo.IrqInfo.LastestSigTime_sec
 					    [module][cnt] =
 						(unsigned int) time_frmb.tv_sec;
+#ifndef CONFIG_MTK_ENABLE_GMO
 					IspInfo.IrqInfo.PassedBySigCnt
 					    [module][cnt][i]++;
+#endif
 				}
 				tmp = tmp >> 1;
 				cnt++;
@@ -13378,6 +13591,7 @@ irqreturn_t ISP_Irq_CAMSV_2(signed int  Irq, void *DeviceId)
 			 * in this irq type
 			 */
 		}
+#endif
 	}
 	spin_unlock(&(IspInfo.SpinLockIrq[module]));
 	/*  */
@@ -13478,10 +13692,12 @@ irqreturn_t ISP_Irq_CAMSV_3(signed int  Irq, void *DeviceId)
 		/* update pass1 done time stamp for eis user(need match with
 		 * the time stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][10] =
 			(unsigned int)(usec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][10] =
 			(unsigned int)(sec);
+#endif
 
 		if (IspInfo.DebugMask & ISP_DBG_INT) {
 			IRQ_LOG_KEEPER(module, m_CurrentPPB, _LOG_INF,
@@ -13560,10 +13776,12 @@ irqreturn_t ISP_Irq_CAMSV_3(signed int  Irq, void *DeviceId)
 		/* update SOF time stamp for eis user(need match with the time
 		 * stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][12] =
 			(unsigned int)(sec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][12] =
 			(unsigned int)(usec);
+#endif
 
 		/* sw sof counter */
 		sof_count[module]++;
@@ -13578,6 +13796,7 @@ irqreturn_t ISP_Irq_CAMSV_3(signed int  Irq, void *DeviceId)
 		/* 1. update interrupt status to all users */
 		IspInfo.IrqInfo.Status[module][SIGNAL_INT][i] |= IrqStatus;
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 		/* 2. update signal time and passed by signal count */
 		if (IspInfo.IrqInfo.MarkedFlag[module][SIGNAL_INT][i] &
 		    IspInfo.IrqInfo.Mask[module][SIGNAL_INT]) {
@@ -13591,8 +13810,10 @@ irqreturn_t ISP_Irq_CAMSV_3(signed int  Irq, void *DeviceId)
 					IspInfo.IrqInfo.LastestSigTime_sec
 					    [module][cnt] =
 						(unsigned int) time_frmb.tv_sec;
+#ifndef CONFIG_MTK_ENABLE_GMO
 					IspInfo.IrqInfo.PassedBySigCnt
 					    [module][cnt][i]++;
+#endif
 				}
 				tmp = tmp >> 1;
 				cnt++;
@@ -13602,6 +13823,7 @@ irqreturn_t ISP_Irq_CAMSV_3(signed int  Irq, void *DeviceId)
 			 * this irq type
 			 */
 		}
+#endif
 	}
 	spin_unlock(&(IspInfo.SpinLockIrq[module]));
 	/*  */
@@ -13702,10 +13924,12 @@ irqreturn_t ISP_Irq_CAMSV_4(signed int  Irq, void *DeviceId)
 		/* update pass1 done time stamp for eis user(need match with the
 		 * time stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][10] =
 			(unsigned int)(usec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][10] =
 			(unsigned int)(sec);
+#endif
 
 		if (IspInfo.DebugMask & ISP_DBG_INT) {
 			IRQ_LOG_KEEPER(module, m_CurrentPPB, _LOG_INF,
@@ -13784,10 +14008,12 @@ irqreturn_t ISP_Irq_CAMSV_4(signed int  Irq, void *DeviceId)
 		/* update SOF time stamp for eis user(need match with the time
 		 * stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][12] =
 			(unsigned int)(sec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][12] =
 			(unsigned int)(usec);
+#endif
 
 		/* sw sof counter */
 		sof_count[module]++;
@@ -13802,6 +14028,7 @@ irqreturn_t ISP_Irq_CAMSV_4(signed int  Irq, void *DeviceId)
 		/* 1. update interrupt status to all users */
 		IspInfo.IrqInfo.Status[module][SIGNAL_INT][i] |= IrqStatus;
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 		/* 2. update signal time and passed by signal count */
 		if (IspInfo.IrqInfo.MarkedFlag[module][SIGNAL_INT][i]&
 		    IspInfo.IrqInfo.Mask[module][SIGNAL_INT]) {
@@ -13815,8 +14042,10 @@ irqreturn_t ISP_Irq_CAMSV_4(signed int  Irq, void *DeviceId)
 					IspInfo.IrqInfo.LastestSigTime_sec
 					    [module][cnt] =
 						(unsigned int) time_frmb.tv_sec;
+#ifndef CONFIG_MTK_ENABLE_GMO
 					IspInfo.IrqInfo.PassedBySigCnt
 					    [module][cnt][i]++;
+#endif
 				}
 				tmp = tmp >> 1;
 				cnt++;
@@ -13826,6 +14055,7 @@ irqreturn_t ISP_Irq_CAMSV_4(signed int  Irq, void *DeviceId)
 			 * this irq type
 			 */
 		}
+#endif
 	}
 	spin_unlock(&(IspInfo.SpinLockIrq[module]));
 	/*  */
@@ -13927,10 +14157,12 @@ irqreturn_t ISP_Irq_CAMSV_5(signed int  Irq, void *DeviceId)
 		/* update pass1 done time stamp for eis user(need match with the
 		 * time stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][10] =
 			(unsigned int)(usec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][10] =
 			(unsigned int)(sec);
+#endif
 
 		if (IspInfo.DebugMask & ISP_DBG_INT) {
 			IRQ_LOG_KEEPER(module, m_CurrentPPB, _LOG_INF,
@@ -14009,10 +14241,12 @@ irqreturn_t ISP_Irq_CAMSV_5(signed int  Irq, void *DeviceId)
 		/* update SOF time stamp for eis user(need match with the time
 		 * stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][12] =
 			(unsigned int)(sec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][12] =
 			(unsigned int)(usec);
+#endif
 
 		/* sw sof counter */
 		sof_count[module]++;
@@ -14027,6 +14261,7 @@ irqreturn_t ISP_Irq_CAMSV_5(signed int  Irq, void *DeviceId)
 		/* 1. update interrupt status to all users */
 		IspInfo.IrqInfo.Status[module][SIGNAL_INT][i] |= IrqStatus;
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 		/* 2. update signal time and passed by signal count */
 		if (IspInfo.IrqInfo.MarkedFlag[module][SIGNAL_INT][i] &
 		    IspInfo.IrqInfo.Mask[module][SIGNAL_INT]) {
@@ -14040,8 +14275,10 @@ irqreturn_t ISP_Irq_CAMSV_5(signed int  Irq, void *DeviceId)
 					IspInfo.IrqInfo.LastestSigTime_sec
 					    [module][cnt] =
 						(unsigned int) time_frmb.tv_sec;
+#ifndef CONFIG_MTK_ENABLE_GMO
 					IspInfo.IrqInfo.PassedBySigCnt
 					    [module][cnt][i]++;
+#endif
 				}
 				tmp = tmp >> 1;
 				cnt++;
@@ -14051,6 +14288,7 @@ irqreturn_t ISP_Irq_CAMSV_5(signed int  Irq, void *DeviceId)
 			 * this irq type
 			 */
 		}
+#endif
 	}
 	spin_unlock(&(IspInfo.SpinLockIrq[module]));
 	/*  */
@@ -14197,7 +14435,6 @@ irqreturn_t ISP_Irq_CAM_A(signed int Irq, void *DeviceId)
 	if ((IrqStatus & HW_PASS1_DON_ST) || (IrqStatus & SOF_INT_ST))
 		cur_v_cnt = ISP_RD32_TG_CAM_FRM_CNT(module, reg_module);
 
-#if 0
 	if ((IrqStatus & HW_PASS1_DON_ST) && (IrqStatus & SOF_INT_ST)) {
 		if (cur_v_cnt != sof_count[module])
 			IRQ_LOG_KEEPER(module, m_CurrentPPB, _LOG_INF,
@@ -14212,7 +14449,6 @@ irqreturn_t ISP_Irq_CAM_A(signed int Irq, void *DeviceId)
 			    (sof_count[module]) ?
 			    (sof_count[module] - 1) : (sof_count[module]));
 	}
-#endif
 
 	spin_lock(&(IspInfo.SpinLockIrq[module]));
 	if (IrqStatus & VS_INT_ST) {
@@ -14227,12 +14463,13 @@ irqreturn_t ISP_Irq_CAM_A(signed int Irq, void *DeviceId)
 		/* update pass1 done time stamp for eis user(need match with
 		 * the time stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][10] =
 			(unsigned int)(usec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][10] =
 			(unsigned int)(sec);
+#endif
 
-#if 0
 		if (IspInfo.DebugMask & ISP_DBG_INT) {
 			/*SW p1_don is not reliable*/
 			if (FrameStatus[module] != CAM_FST_DROP_FRAME) {
@@ -14247,7 +14484,6 @@ irqreturn_t ISP_Irq_CAM_A(signed int Irq, void *DeviceId)
 					(unsigned int)(fbc_ctrl2[1].Raw));
 			}
 		}
-#endif
 
 		#if (TSTMP_SUBSAMPLE_INTPL == 1)
 		if (g1stSwP1Done[module] == MTRUE) {
@@ -14310,13 +14546,11 @@ irqreturn_t ISP_Irq_CAM_A(signed int Irq, void *DeviceId)
 		FrameStatus[module] =
 			Irq_CAM_FrameStatus(reg_module, module, irqDelay);
 
-#if 0
 		if (FrameStatus[module] == CAM_FST_DROP_FRAME) {
 			IRQ_LOG_KEEPER(module, m_CurrentPPB, _LOG_INF,
 				"CAMA Lost p1 done_%d (0x%x): ",
 				sof_count[module], cur_v_cnt);
 		}
-#endif
 
 		/* During SOF, re-enable that err/warn irq had been marked and
 		 * reset IrqCntInfo
@@ -14557,7 +14791,6 @@ irqreturn_t ISP_Irq_CAM_A(signed int Irq, void *DeviceId)
 			}
 			#endif /* (TIMESTAMP_QUEUE_EN == 1) */
 
-#if 0
 			IRQ_LOG_KEEPER(module, m_CurrentPPB, _LOG_INF,
 				"CAMA P1_SOF_%d_%d(0x%x_0x%x,0x%x_0x%x,0x%x,0x%x,0x%x),int_us:%d,cq:0x%x\n",
 				   sof_count[module], cur_v_cnt,
@@ -14589,27 +14822,27 @@ irqreturn_t ISP_Irq_CAM_A(signed int Irq, void *DeviceId)
 				    ISP_RD32(CAM_REG_FBC_PSO_CTL1(reg_module)),
 				    ISP_RD32(CAM_REG_FBC_PSO_CTL2(reg_module)));
 #endif
-#endif
 			/* keep current time */
 			m_sec = sec;
 			m_usec = usec;
 
-#if 0
 			/* dbg information only */
 			if (cur_v_cnt !=
 			    ISP_RD32_TG_CAM_FRM_CNT(module, reg_module))
 				IRQ_LOG_KEEPER(module, m_CurrentPPB, _LOG_INF,
 					"SW ISR right on next hw p1_done\n");
-#endif
+
 		}
 
 		/* update SOF time stamp for eis user(need match with the time
 		 * stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][12] =
-		    (unsigned int)(sec);
+			(unsigned int)(sec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][12] =
-		    (unsigned int)(usec);
+			(unsigned int)(usec);
+#endif
 
 		#if 0
 		/* sw sof counter */
@@ -14642,6 +14875,7 @@ LB_CAMA_SOF_IGNORE:
 		IspInfo.IrqInfo.Status[module][SIGNAL_INT][i] |= IrqStatus;
 		IspInfo.IrqInfo.Status[module][DMA_INT][i] |= DmaStatus;
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 		/* 2. update signal time and passed by signal count */
 		if (IspInfo.IrqInfo.MarkedFlag[module][SIGNAL_INT][i] &
 		    IspInfo.IrqInfo.Mask[module][SIGNAL_INT]) {
@@ -14655,8 +14889,10 @@ LB_CAMA_SOF_IGNORE:
 					IspInfo.IrqInfo.LastestSigTime_sec
 					    [module][cnt] =
 						(unsigned int) time_frmb.tv_sec;
+#ifndef CONFIG_MTK_ENABLE_GMO
 					IspInfo.IrqInfo.PassedBySigCnt
 					    [module][cnt][i]++;
+#endif
 				}
 				tmp = tmp >> 1;
 				cnt++;
@@ -14666,6 +14902,7 @@ LB_CAMA_SOF_IGNORE:
 			 * this irq type
 			 */
 		}
+#endif
 	}
 	spin_unlock(&(IspInfo.SpinLockIrq[module]));
 	/*  */
@@ -14863,10 +15100,12 @@ irqreturn_t ISP_Irq_CAM_B(signed int  Irq, void *DeviceId)
 		/* update pass1 done time stamp for eis user(need match with
 		 * the time stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][10] =
 			(unsigned int)(usec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][10] =
 			(unsigned int)(sec);
+#endif
 
 		if (IspInfo.DebugMask & ISP_DBG_INT) {
 			/*SW p1_don is not reliable*/
@@ -14941,13 +15180,11 @@ irqreturn_t ISP_Irq_CAM_B(signed int  Irq, void *DeviceId)
 		/* chk this frame have EOF or not, dynimic dma port chk */
 		FrameStatus[module] =
 			Irq_CAM_FrameStatus(reg_module, module, irqDelay);
-#if 0
 		if (FrameStatus[module] == CAM_FST_DROP_FRAME) {
 			IRQ_LOG_KEEPER(module, m_CurrentPPB, _LOG_INF,
 				"CAMB Lost p1 done_%d (0x%x): ",
 				sof_count[module], cur_v_cnt);
 		}
-#endif
 
 		/* During SOF, re-enable that err/warn irq had been marked and
 		 * reset IrqCntInfo
@@ -15233,10 +15470,12 @@ irqreturn_t ISP_Irq_CAM_B(signed int  Irq, void *DeviceId)
 		/* update SOF time stamp for eis user(need match with the time
 		 * stamp in image header)
 		 */
+#ifndef CONFIG_MTK_ENABLE_GMO
 		IspInfo.IrqInfo.LastestSigTime_usec[module][12] =
 			(unsigned int)(sec);
 		IspInfo.IrqInfo.LastestSigTime_sec[module][12] =
 			(unsigned int)(usec);
+#endif
 
 		#if 0
 		/* sw sof counter */
@@ -15268,6 +15507,7 @@ LB_CAMB_SOF_IGNORE:
 		IspInfo.IrqInfo.Status[module][SIGNAL_INT][i] |= IrqStatus;
 		IspInfo.IrqInfo.Status[module][DMA_INT][i] |= DmaStatus;
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 		/* 2. update signal time and passed by signal count */
 		if (IspInfo.IrqInfo.MarkedFlag[module][SIGNAL_INT][i] &
 		    IspInfo.IrqInfo.Mask[module][SIGNAL_INT]) {
@@ -15280,9 +15520,11 @@ LB_CAMB_SOF_IGNORE:
 					    (unsigned int) time_frmb.tv_usec;
 					IspInfo.IrqInfo.LastestSigTime_sec
 					    [module][cnt] =
-					    (unsigned int) time_frmb.tv_sec;
+						(unsigned int) time_frmb.tv_sec;
+#ifndef CONFIG_MTK_ENABLE_GMO
 					IspInfo.IrqInfo.PassedBySigCnt
 					    [module][cnt][i]++;
+#endif
 				}
 				tmp = tmp >> 1;
 				cnt++;
@@ -15292,6 +15534,7 @@ LB_CAMB_SOF_IGNORE:
 			 * this irq type
 			 */
 		}
+#endif
 	}
 	spin_unlock(&(IspInfo.SpinLockIrq[module]));
 	/*  */
@@ -15436,14 +15679,12 @@ static void ISP_TaskletFunc_SV_5(unsigned long data)
 #if (ISP_BOTTOMHALF_WORKQ == 1)
 static void ISP_BH_Workqueue(struct work_struct *pWork)
 {
-#if 0
 	struct IspWorkqueTable *pWorkTable =
 		container_of(pWork, struct IspWorkqueTable, isp_bh_work);
 
 	IRQ_LOG_PRINTER_PR_ERR(pWorkTable->module, m_CurrentPPB, _LOG_ERR);
 	IRQ_LOG_PRINTER(pWorkTable->module, m_CurrentPPB, _LOG_INF);
 	SMI_INFO_DUMP(pWorkTable->module);
-#endif
 }
 #endif
 
