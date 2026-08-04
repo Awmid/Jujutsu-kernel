@@ -76,7 +76,9 @@ static DEFINE_MUTEX(gimgsensor_mutex);
 
 struct IMGSENSOR  gimgsensor;
 struct IMGSENSOR *pgimgsensor = &gimgsensor;
+#ifndef CONFIG_MTK_ENABLE_GMO
 MUINT32 last_id;
+#endif
 
 /*prevent imgsensor race condition in vulunerbility test*/
 struct mutex imgsensor_mutex;
@@ -223,7 +225,7 @@ imgsensor_sensor_open(struct IMGSENSOR_SENSOR *psensor)
 			psensor_inst->state = IMGSENSOR_STATE_OPEN;
 #ifdef CONFIG_MTK_CCU
 			ccuSensorInfo.slave_addr =
-			    (psensor_inst->i2c_cfg.pinst->msg->addr << 1);
+			    (psensor_inst->i2c_cfg.pinst->i2c_addr << 1);
 
 			ccuSensorInfo.sensor_name_string =
 			    (char *)(psensor_inst->psensor_name);
@@ -834,7 +836,9 @@ static inline int adopt_CAMERA_HW_GetInfo2(void *pBuf)
 	MSDK_SENSOR_INFO_STRUCT *pInfo4 = NULL;
 	MSDK_SENSOR_CONFIG_STRUCT  *pConfig4 = NULL;
 	MSDK_SENSOR_RESOLUTION_INFO_STRUCT  *psensorResolution = NULL;
+#ifndef CONFIG_MTK_ENABLE_GMO
 	char *pmtk_ccm_name = NULL;
+#endif
 
 	pSensorGetInfo = (struct IMAGESENSOR_GETINFO_STRUCT *)pBuf;
 	if (pSensorGetInfo == NULL ||
@@ -1094,6 +1098,7 @@ static inline int adopt_CAMERA_HW_GetInfo2(void *pBuf)
 				psensorResolution->SensorVideoWidth,
 				psensorResolution->SensorVideoHeight);
 
+#ifndef CONFIG_MTK_ENABLE_GMO
 	if (pSensorGetInfo->SensorId <= last_id) {
 		memset(mtk_ccm_name, 0, camera_info_size);
 		PK_DBG("memset ok");
@@ -1184,6 +1189,7 @@ static inline int adopt_CAMERA_HW_GetInfo2(void *pBuf)
 		camera_info_size - (int)(pmtk_ccm_name - mtk_ccm_name),
 		"\nHDR_Support(0:NO HDR,1: iHDR,2:mvHDR,3:zHDR)=%2d",
 		pSensorInfo->HDR_Support);
+#endif
 
 	/* Resolution */
 	if (copy_to_user(
@@ -1374,7 +1380,7 @@ static inline int check_length_of_para(
 		break;
 	}
 	if (ret != 0)
-		pr_err(
+		no_printk(
 			"check length failed, feature ctrl id = %d, length = %d\n",
 			FeatureId,
 			length);
@@ -2913,8 +2919,8 @@ static ssize_t imgsensor_name_show(struct device *dev, struct device_attribute *
 	ssize_t ret = 0;
 	int num1 = 0;
 	int num2 = 0;
-	int num3 = 0;
-	int num4 = 0;
+    int num3 = 0;
+    int num4 = 0;
 
 	char* dst[4];
 	unsigned int i=0;
@@ -2929,49 +2935,50 @@ static ssize_t imgsensor_name_show(struct device *dev, struct device_attribute *
 		if(src_name != NULL)
 		{
 			len = strlen(src_name);
-			pr_info("[chenxy] len:%d\n", len);
+			no_printk("[chenxy] len:%d\n", len);
 			if(len > 0){
 				for(i=0; ((i < 4) && (src_name != NULL)); i++) {
-					pr_info("[chenxy] src_name :%s \n", src_name);
+					no_printk("[chenxy] src_name :%s \n", src_name);
 					dst[i] = strsep(&src_name, ";");
-					pr_info("[chenxy] dst[%d]:%s \n", i,  dst[i]);
+					no_printk("[chenxy] dst[%d]:%s \n", i,  dst[i]);
 				}
 			}
 
-			pr_info("[chenxy] i:%d\n", i);
-			for(j=0; j < i; j++) {
-				if(!strcmp("hynix_hi1337_i", dst[j]) || !strcmp("hynix_hi1337_ii", dst[j]) || !strcmp("hynix_hi1337_iii", dst[j]) || !strcmp("hynix_hi1337_iiii", dst[j])){
-					num1 = sprintf(buf, "WIDE=%s\n", dst[j]);
-					pr_info("[chenxy] WIDE=%s\n", dst[j]);
-					break;
-				}
+		no_printk("[chenxy] i:%d\n", i);
+		    for(j=0; j < i; j++) {
+			if(!strcmp("hynix_hi1337_i", dst[j]) || !strcmp("hynix_hi1337_ii", dst[j]) || !strcmp("hynix_hi1337_iii", dst[j]) || !strcmp("hynix_hi1337_iiii", dst[j])){
+			    num1 = sprintf(buf, "WIDE=%s\n", dst[j]);
+			    no_printk("[chenxy] WIDE=%s\n", dst[j]);
+			    break;
 			}
-			
-			for(j=0; j < i; j++) {
-				if(!strcmp("gc_gc5035_i", dst[j]) || !strcmp("gc_gc5035_ii", dst[j]) || !strcmp("gc_gc5035_iii", dst[j]) || !strcmp("gc_gc5035_iiii", dst[j])){
-					num2 = sprintf(buf + num1, "FRONT=%s\n", dst[j]);
-					pr_info("[chenxy] FRONT=%s\n", dst[j]);
-					break;
-				}
-			}
-			for(j=0; j < i; j++) {
-				if(!strcmp("hynix_hi259_i", dst[j]) || !strcmp("hynix_hi259_ii", dst[j]) || !strcmp("hynix_hi259_iii", dst[j]) || !strcmp("hynix_hi259_iv", dst[j])){
-					num3 = sprintf(buf+num1+num2, "MACRO=%s\n", dst[j]);
-					no_printk("[chenxy] MACRO=%s\n", dst[j]);
-					break;
-				}
-			}
+		    }
 
-			for(j=0; j < i; j++) {
-				if(!strcmp("ov_ov02b_i", dst[j]) || !strcmp("gc_gc02m1_ii", dst[j]) || !strcmp("ov_ov02b_iii", dst[j])){
-					num4 = sprintf(buf+num1+num2+num3, "DEPTH=%s\n", dst[j]);
-					no_printk("[chenxy] DEPTH=%s\n", dst[j]);
-					break;
-				}
+		    for(j=0; j < i; j++) {
+			if(!strcmp("gc_gc5035_i", dst[j]) || !strcmp("gc_gc5035_ii", dst[j]) || !strcmp("gc_gc5035_iii", dst[j]) || !strcmp("gc_gc5035_iiii", dst[j]) || !strcmp("hynix_hi1337_ii", dst[j])){
+			    num2 = sprintf(buf + num1, "FRONT=%s\n", dst[j]);
+			    no_printk("[chenxy] FRONT=%s\n", dst[j]);
+			    break;
 			}
+		    }
+
+		    for(j=0; j < i; j++) {
+			if(!strcmp("hynix_hi259_i", dst[j]) || !strcmp("hynix_hi259_ii", dst[j]) || !strcmp("hynix_hi259_iii", dst[j]) || !strcmp("hynix_hi259_iv", dst[j])){
+			    num3 = sprintf(buf+num1+num2, "MACRO=%s\n", dst[j]);
+			    no_printk("[chenxy] MACRO=%s\n", dst[j]);
+			    break;
+			}
+		    }
+
+		    for(j=0; j < i; j++) {
+			if(!strcmp("ov_ov02b_i", dst[j]) || !strcmp("gc_gc02m1_ii", dst[j]) || !strcmp("ov_ov02b_iii", dst[j])){
+			    num4 = sprintf(buf+num1+num2+num3, "DEPTH=%s\n", dst[j]);
+			    no_printk("[chenxy] DEPTH=%s\n", dst[j]);
+			    break;
+			}
+		    }
 
 		} else {
-			pr_info("[chenxy] imgsensorname is NULL");
+			no_printk("[chenxy] imgsensorname is NULL");
 		}
 	}
 	ret = strlen(buf) + 1;
@@ -3038,12 +3045,12 @@ static int __init imgsensor_init(void)
 #endif
 	sensor_kobject = kobject_create_and_add("android_camera", NULL);
 	if (sensor_kobject == NULL) {
-		pr_info("[imgsensor_init]Big error: sensor_kobject_create_sysfs_ failed\n");
+		no_printk("[imgsensor_init]Big error: sensor_kobject_create_sysfs_ failed\n");
 	} else {
 		ret = sysfs_create_file(sensor_kobject, &dev_attr_sensor.attr);
 		ret = sysfs_create_file(sensor_kobject, &dev_attr_sensorid.attr);
 		if (ret) {
-			pr_info("%s failed \n", __func__);
+			no_printk("%s failed \n", __func__);
 			kobject_del(sensor_kobject);
 		}
 	}
@@ -3068,4 +3075,3 @@ module_exit(imgsensor_exit);
 MODULE_DESCRIPTION("image sensor driver");
 MODULE_AUTHOR("Mediatek");
 MODULE_LICENSE("GPL v2");
-

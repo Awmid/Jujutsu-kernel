@@ -25,6 +25,8 @@
 #include "hynix_hi1337_i_Sensor.h"
 
 #define PFX "hi1337_camera_sensor"
+/*#define LOG_INF(format, args...)    \
+	no_printk(PFX "[%s] " format, __func__, ##args) */
 #define LOG_INF(format, args...)
 //PDAF
 #define ENABLE_PDAF 1
@@ -2828,14 +2830,14 @@ static void hi1337_fusion_id_read(void)
 	int i;
 	for (i=0; i<9; i++) {
 		fusion_id_main[i] = read_cmos_sensor_hi1337(0x10+i);
-		pr_devel("%s %d fusion_id_front[%d]=0x%2x\n",__func__, __LINE__, i, fusion_id_main[i]);
+		no_printk("%s %d fusion_id_front[%d]=0x%2x\n",__func__, __LINE__, i, fusion_id_main[i]);
 	}
 }
 static int hi1337_vendor_id_read(int addr)
 {
 	int  flag = 0;
 	flag = read_cmos_sensor_hi1337(0x1);
-    pr_info("hynix_hi1337_I  read vendor id , form 0x01 is: 0x%x\n", flag);
+    no_printk("hynix_hi1337_I  read vendor id , form 0x01 is: 0x%x\n", flag);
 	return flag;
 }
 
@@ -2847,7 +2849,7 @@ static kal_uint32 get_imgsensor_id(UINT32 *sensor_id)
     
 	flag = hi1337_vendor_id_read(0x01);
 	if(flag != hi1337_vendor_id){
-        pr_info("hynix_hi1337_I match vendor id fail, reead vendor id is: 0x%x,expect vendor id is 0x%x \n", flag,hi1337_vendor_id);
+        no_printk("hynix_hi1337_I match vendor id fail, reead vendor id is: 0x%x,expect vendor id is 0x%x \n", flag,hi1337_vendor_id);
 		return ERROR_SENSOR_CONNECT_FAIL;
 	}else{
         hi1337_fusion_id_read();
@@ -2972,7 +2974,7 @@ static kal_uint32 close(void)
 static kal_uint32 preview(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 			MSDK_SENSOR_CONFIG_STRUCT *sensor_config_data)
 {
-    pr_info("[hi1337] preview mode start\n");
+    no_printk("[hi1337] preview mode start\n");
     spin_lock(&imgsensor_drv_lock);
     imgsensor.sensor_mode = IMGSENSOR_MODE_PREVIEW;
     imgsensor.pclk = imgsensor_info.pre.pclk;
@@ -3004,7 +3006,7 @@ static kal_uint32 preview(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 static kal_uint32 capture(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 			MSDK_SENSOR_CONFIG_STRUCT *sensor_config_data)
 {
-    pr_info("[hi1337] capture mode start\n");
+    no_printk("[hi1337] capture mode start\n");
     spin_lock(&imgsensor_drv_lock);
     imgsensor.sensor_mode = IMGSENSOR_MODE_CAPTURE;
 
@@ -3033,7 +3035,7 @@ static kal_uint32 capture(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 static kal_uint32 normal_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 			  MSDK_SENSOR_CONFIG_STRUCT *sensor_config_data)
 {
-    pr_info("[hi1337] normal video mode start\n");
+    no_printk("[hi1337] normal video mode start\n");
 	spin_lock(&imgsensor_drv_lock);
 	imgsensor.sensor_mode = IMGSENSOR_MODE_VIDEO;
 	imgsensor.pclk = imgsensor_info.normal_video.pclk;
@@ -3050,7 +3052,7 @@ static kal_uint32 normal_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 static kal_uint32 hs_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 			MSDK_SENSOR_CONFIG_STRUCT *sensor_config_data)
 {
-    pr_info("[hi1337] hs video mode start\n");
+    no_printk("[hi1337] hs video mode start\n");
     spin_lock(&imgsensor_drv_lock);
     imgsensor.sensor_mode = IMGSENSOR_MODE_HIGH_SPEED_VIDEO;
     imgsensor.pclk = imgsensor_info.hs_video.pclk;
@@ -3068,7 +3070,7 @@ static kal_uint32 hs_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 static kal_uint32 slim_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 		      MSDK_SENSOR_CONFIG_STRUCT *sensor_config_data)
 {
-    pr_info("[hi1337] slim video mode start\n");
+    no_printk("[hi1337] slim video mode start\n");
     spin_lock(&imgsensor_drv_lock);
     imgsensor.sensor_mode = IMGSENSOR_MODE_SLIM_VIDEO;
     imgsensor.pclk = imgsensor_info.slim_video.pclk;
@@ -3087,7 +3089,7 @@ static kal_uint32 slim_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 static kal_uint32 custom1(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 			MSDK_SENSOR_CONFIG_STRUCT *sensor_config_data)
 {
-    pr_info("[hi1337] custom1 mode start\n");
+    no_printk("[hi1337] custom1 mode start\n");
     spin_lock(&imgsensor_drv_lock);
     imgsensor.sensor_mode = IMGSENSOR_MODE_CUSTOM1;
     imgsensor.pclk = imgsensor_info.custom1.pclk;
@@ -3533,7 +3535,7 @@ static kal_uint32 set_test_pattern_mode(kal_bool enable)
 
 static kal_uint32 streaming_control(kal_bool enable)
 {
-	pr_debug("streaming_enable(0=Sw Standby,1=streaming): %d\n", enable);
+	no_printk("streaming_enable(0=Sw Standby,1=streaming): %d\n", enable);
 
 	if (enable)
 		write_cmos_sensor(0x0b00, 0x0100); // stream on

@@ -340,11 +340,11 @@
 #define GC_GC5035_I_SENSOR_ID			0x5035
 #define GC_GC5035_II_SENSOR_ID			0x5036
 #define GC_GC5035_III_SENSOR_ID			0x5037
-#define GC_GC5035_IIII_SENSOR_ID		0x5038
+#define GC_GC5035_IIII_SENSOR_ID			0x5038
 #define HYNIX_HI1337_I_SENSOR_ID                0x1337
 #define HYNIX_HI1337_II_SENSOR_ID               0x1338
 #define HYNIX_HI1337_III_SENSOR_ID              0x1339
-#define HYNIX_HI1337_IIII_SENSOR_ID             0x133a
+#define HYNIX_HI1337_IIII_SENSOR_ID              0x133a
 #define GC02M1_SENSOR_ID                        0x02e0
 #define GC02M1MACRO_SENSOR_ID                   0x02e2
 #define HYNIX_HI259_I_SENSOR_ID 	0xe1
@@ -554,7 +554,7 @@
 #define SENSOR_DRVNAME_GC_GC5035_I      "gc_gc5035_i"
 #define SENSOR_DRVNAME_GC_GC5035_II      "gc_gc5035_ii"
 #define SENSOR_DRVNAME_GC_GC5035_III      "gc_gc5035_iii"
-#define SENSOR_DRVNAME_GC_GC5035_IIII       "gc_gc5035_iiii"
+#define SENSOR_DRVNAME_GC_GC5035_IIII      "gc_gc5035_iiii"
 #define SENSOR_DRVNAME_HYNIX_HI1337_I             "hynix_hi1337_i"
 #define SENSOR_DRVNAME_HYNIX_HI1337_II             "hynix_hi1337_ii"
 #define SENSOR_DRVNAME_HYNIX_HI1337_III             "hynix_hi1337_iii"

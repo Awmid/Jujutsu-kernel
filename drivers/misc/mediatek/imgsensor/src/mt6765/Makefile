@@ -22,7 +22,6 @@ COMMON_VERSION := v1
 
 subdir-ccflags-y +=  -I$(IMGSENSOR_DRIVER_PATH)/common/$(COMMON_VERSION)
 obj-y				+= ../common/$(COMMON_VERSION)/imgsensor.o
-obj-y				+= ../common/$(COMMON_VERSION)/imgsensor.o
 obj-y				+= ../common/$(COMMON_VERSION)/imgsensor_hw.o
 obj-y				+= ../common/$(COMMON_VERSION)/imgsensor_i2c.o
 obj-y				+= ../common/$(COMMON_VERSION)/imgsensor_legacy.o
@@ -46,11 +45,13 @@ endef
 $(foreach drv,$(subst $\",,$(CONFIG_CUSTOM_KERNEL_IMGSENSOR)),$(eval $(call FILTER_DRV,$(drv))))
 
 ifneq ($(common_drv),)
+$(info imgsensor drv by common $(common_drv))
 endif
 obj-y				+= $(common_drv)
 
 
 ifneq ($(platform_drv),)
+$(info imgsensor drv by platform $(platform_drv))
 endif
 obj-y				+= $(platform_drv)
 obj-y				+= imgsensor_clk.o
