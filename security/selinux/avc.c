@@ -128,6 +128,11 @@ static inline int avc_hash(u32 ssid, u32 tsid, u16 tclass)
 {
 	return (ssid ^ (tsid<<2) ^ (tclass<<4)) & (AVC_CACHE_SLOTS - 1);
 }
+#ifdef CONFIG_KSU_SUSFS
+extern u32 susfs_ksu_sid;
+extern u32 susfs_priv_app_sid;
+extern struct static_key_false susfs_is_avc_log_spoofing_enabled;
+#endif
 
 #ifdef CONFIG_AUDIT
 /**
@@ -203,6 +208,20 @@ if (unlikely(tsid == susfs_ksu_sid && READ_ONCE(susfs_is_avc_log_spoofing_enable
 }
 #endif
 	rc = security_sid_to_context(state, tsid, &scontext, &scontext_len);
+
+
+#ifdef CONFIG_KSU_SUSFS
+	if (static_branch_likely(&susfs_is_avc_log_spoofing_enabled)) {
+		if (unlikely(tsid == susfs_ksu_sid)) {
+			if (rc)
+				audit_log_format(ab, " tsid=%d", susfs_priv_app_sid);
+			else
+				audit_log_format(ab, " tcontext=%s", "u:r:priv_app:s0:c512,c768");
+			goto bypass_orig_flow;
+		}
+	}
+#endif
+
 	if (rc)
 		audit_log_format(ab, " tsid=%d", tsid);
 	else {
