@@ -56,9 +56,11 @@ jobs:
         run: |
           chmod u+x clean.sh
           chmod u+x syscall_hook.sh
+          chmod u+x susfs.sh
           bash clean.sh
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
           bash syscall_hook.sh
+          ./susfs.sh || true
           
       - name: Build kernel
         run: |
