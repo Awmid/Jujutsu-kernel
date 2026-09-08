@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  KERNEL_DEFCONFIG: "blossom_noksu_defconfig"
+  KERNEL_DEFCONFIG: "blossom_defconfig"
   KERNEL_ARCH: "arm64"
   KBUILD_BUILD_USER: "github-actions"
   KBUILD_BUILD_HOST: "ci-server"
@@ -54,7 +54,7 @@ jobs:
 
       - name: Integrate KernelSU-Next
         run: |
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s f7be4a53bd39d4a03876eba5e888818b1a1fcaac
           
       - name: Build kernel
         run: |
