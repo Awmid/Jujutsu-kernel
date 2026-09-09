@@ -195,11 +195,11 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 				pdata2->charging_current_limit = 2000000;
 			}
 		} else if (info->chr_type == POWER_SUPPLY_TYPE_USB_FLOAT) {
-			/* NONSTANDARD_CHARGER */
+			/* NONSTANDARD_CHARGER: Request full AC current, hardware AICL protects the adapter */
 			pdata->input_current_limit =
-			info->data.usb_charger_current;
+		 	 info->data.ac_charger_input_current;
 			pdata->charging_current_limit =
-			info->data.usb_charger_current;
+			 info->data.ac_charger_current;
 			is_basic = true;
 		}
 
