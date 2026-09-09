@@ -21,6 +21,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Integrate NoMount
+        run: |
+          curl -sL https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s v2.0.0
+
       - name: Install dependencies
         run: |
           export DEBIAN_FRONTEND=noninteractive
