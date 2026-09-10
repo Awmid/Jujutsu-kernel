@@ -251,7 +251,6 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 	}
 
 	if (pdata->thermal_charging_current_limit != -1) {
-		/* Below 43°C, maintain at least 1500mA so warm phones don't stall; above 43°C, throttle safely */
 		int min_warm_limit = (info->battery_temp < 43) ? 1500000 : pdata->thermal_charging_current_limit;
 		int effective_limit = min(pdata->charging_current_limit, max(pdata->thermal_charging_current_limit, min_warm_limit));
 
