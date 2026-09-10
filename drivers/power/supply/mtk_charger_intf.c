@@ -319,6 +319,10 @@ int get_charger_type(struct mtk_charger *info)
 			prop2.intval = POWER_SUPPLY_TYPE_USB_DCP;
 		  else if (prop3.intval == POWER_SUPPLY_USB_TYPE_CDP)
 			prop2.intval = POWER_SUPPLY_TYPE_USB_CDP;
+		  else if (prop3.intval == POWER_SUPPLY_USB_TYPE_SDP)
+			prop2.intval = POWER_SUPPLY_TYPE_USB;     
+          else 
+			prop2.intval = POWER_SUPPLY_TYPE_USB_FLOAT;		  
 	}
 
 	pr_notice("%s online:%d type:%d usb_type:%d\n", __func__,

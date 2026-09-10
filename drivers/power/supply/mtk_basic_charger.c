@@ -251,24 +251,25 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 	}
 
 	if (pdata->thermal_charging_current_limit != -1) {
-		if (pdata->thermal_charging_current_limit <
-			pdata->charging_current_limit) {
-			pdata->charging_current_limit = -1;
-		info->setting.charging_current_limit1 =
-		pdata->thermal_charging_current_limit;
-			}
-	} else
+		/* Below 43°C, maintain at least 1500mA so warm phones don't stall; above 43°C, throttle safely */
+		int min_warm_limit = (info->battery_temp < 43) ? 1500000 : pdata->thermal_charging_current_limit;
+		int effective_limit = min(pdata->charging_current_limit, max(pdata->thermal_charging_current_limit, min_warm_limit));
+
+		pdata->charging_current_limit = effective_limit;
+		info->setting.charging_current_limit1 = effective_limit;
+	} else {
 		info->setting.charging_current_limit1 = -1;
+	}
 
 	if (pdata->thermal_input_current_limit != -1) {
-		if (pdata->thermal_input_current_limit <
-			pdata->input_current_limit) {
-			pdata->input_current_limit = -1;
-		info->setting.input_current_limit1 =
-		pdata->input_current_limit;
-			}
-	} else
+		int min_warm_limit = (info->battery_temp < 43) ? 1600000 : pdata->thermal_input_current_limit;
+		int effective_limit = min(pdata->input_current_limit, max(pdata->thermal_input_current_limit, min_warm_limit));
+
+		pdata->input_current_limit = effective_limit;
+		info->setting.input_current_limit1 = effective_limit;
+	} else {
 		info->setting.input_current_limit1 = -1;
+	}
 
 	if (pdata2->thermal_charging_current_limit != -1) {
 		if (pdata2->thermal_charging_current_limit <
