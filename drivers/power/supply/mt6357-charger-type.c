@@ -149,7 +149,7 @@ static void hw_bc11_init(struct mtk_charger_type *info)
 #if IS_ENABLED(CONFIG_USB_MTK_HDRC)
 	int timeout = 200;
 #endif
-	msleep(200);
+	msleep(300);
 	if (info->first_connect == true) {
 #if IS_ENABLED(CONFIG_USB_MTK_HDRC)
 		/* add make sure USB Ready */
@@ -257,7 +257,7 @@ static unsigned int hw_bc11_DCD(struct mtk_charger_type *info)
 		PMIC_RG_BC11_CMP_EN_MASK,
 		PMIC_RG_BC11_CMP_EN_SHIFT,
 		0x2);
-	msleep(80);
+	msleep(120);
 	/* mdelay(80); */
 	wChargerAvail = bc11_get_register_value(info->regmap,
 		PMIC_RGS_BC11_CMP_OUT_ADDR,
@@ -319,7 +319,7 @@ static unsigned int hw_bc11_stepA2(struct mtk_charger_type *info)
 		PMIC_RG_BC11_CMP_EN_MASK,
 		PMIC_RG_BC11_CMP_EN_SHIFT,
 		0x1);
-	msleep(80);
+	msleep(120);
 	/* mdelay(80); */
 	wChargerAvail = bc11_get_register_value(info->regmap,
 					PMIC_RGS_BC11_CMP_OUT_ADDR,
@@ -375,7 +375,7 @@ static unsigned int hw_bc11_stepB2(struct mtk_charger_type *info)
 		PMIC_RG_BC11_CMP_EN_MASK,
 		PMIC_RG_BC11_CMP_EN_SHIFT,
 		0x2);
-	msleep(80);
+	msleep(120);
 	wChargerAvail = bc11_get_register_value(info->regmap,
 		PMIC_RGS_BC11_CMP_OUT_ADDR,
 		PMIC_RGS_BC11_CMP_OUT_MASK,
