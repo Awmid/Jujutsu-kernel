@@ -1284,7 +1284,7 @@ static ssize_t mt_gpufreq_opp_freq_proc_write(struct file *file,
 
 	if (kstrtouint(buf, 10, &value) == 0) {
 		if (value == 0) {
-			g_keep_opp_freq_state = true;
+			g_keep_opp_freq_state = false;
 		} else {
 			for (i = 0; i < g_opp_idx_num; i++) {
 				if (value == g_opp_table[i].gpufreq_khz) {
@@ -1420,10 +1420,10 @@ static int __mt_gpufreq_create_procfs(void)
 
 static void __mt_gpufreq_vcore_volt_switch(unsigned int volt_target)
 {
-	if (volt_target > 90000) {
+	if (volt_target > 70000) {
 		mtk_pm_qos_update_request(&g_pmic->mtk_pm_vgpu, VCORE_OPP_0);
 		g_cur_vcore_opp = VCORE_OPP_0;
-	} else if (volt_target > 80000) {
+	} else if (volt_target > 65000) {
 		mtk_pm_qos_update_request(&g_pmic->mtk_pm_vgpu, VCORE_OPP_1 * 9 / 10);
 		g_cur_vcore_opp = VCORE_OPP_1;
 	} else if (volt_target > 0) {
