@@ -13,7 +13,8 @@
 #include <linux/fs_struct.h>
 #include <linux/sched/task.h>
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-#include <linux/susfs_def.h>
+extern bool susfs_is_current_ksu_domain(void);
+extern struct static_key_false susfs_is_hide_sus_mnts_for_non_su_procs_enabled;
 #endif
 
 #include "proc/internal.h" /* only for get_proc_task() in ->open() */
@@ -115,11 +116,10 @@ static int show_vfsmnt(struct seq_file *m, struct vfsmount *mnt)
 #endif
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (READ_ONCE(susfs_hide_sus_mnts_for_non_su_procs) &&
-		r->mnt_id >= DEFAULT_KSU_MNT_ID &&
-		!susfs_is_current_ksu_domain())
-	{
-		return 0;
+	if (static_branch_likely(&susfs_is_hide_sus_mnts_for_non_su_procs_enabled)) {
+		if (susfs_is_current_proc_umounted()) {
+			return susfs_show_mountinfo(m, mnt);
+		}
 	}
 #endif
 
@@ -165,11 +165,10 @@ static int show_mountinfo(struct seq_file *m, struct vfsmount *mnt)
 #endif
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (READ_ONCE(susfs_hide_sus_mnts_for_non_su_procs) &&
-		r->mnt_id >= DEFAULT_KSU_MNT_ID &&
-		!susfs_is_current_ksu_domain())
-	{
-		return 0;
+	if (static_branch_likely(&susfs_is_hide_sus_mnts_for_non_su_procs_enabled)) {
+		if (susfs_is_current_proc_umounted()) {
+			return susfs_show_mountinfo(m, mnt);
+		}
 	}
 #endif
 
@@ -243,11 +242,10 @@ static int show_vfsstat(struct seq_file *m, struct vfsmount *mnt)
 #endif
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (READ_ONCE(susfs_hide_sus_mnts_for_non_su_procs) &&
-		r->mnt_id >= DEFAULT_KSU_MNT_ID &&
-		!susfs_is_current_ksu_domain())
-	{
-		return 0;
+	if (static_branch_likely(&susfs_is_hide_sus_mnts_for_non_su_procs_enabled)) {
+		if (susfs_is_current_proc_umounted()) {
+			return susfs_show_mountinfo(m, mnt);
+		}
 	}
 #endif
 

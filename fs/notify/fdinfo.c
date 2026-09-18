@@ -17,6 +17,12 @@
 #include <linux/susfs_def.h>
 #endif
 
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+extern bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
+extern void susfs_sus_kstat_spoof_inotify_fdinfo(unsigned long *out_target_ino, dev_t *out_target_dev);
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+
+
 #include "inotify/inotify.h"
 #include "fsnotify.h"
 
