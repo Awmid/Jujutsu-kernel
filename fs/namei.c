@@ -3815,7 +3815,7 @@ static struct file *path_openat(struct nameidata *nd,
 }
 
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-extern int susfs_open_redirect_spoof_vfs_readlink(struct inode *inode, char __user *buffer, int buflen);
+extern struct filename *susfs_open_redirect_spoof_do_sys_openat(struct inode *inode);
 #endif
 
 struct file *do_filp_open(int dfd, struct filename *pathname,
@@ -5031,16 +5031,17 @@ int vfs_readlink(struct dentry *dentry, char __user *buffer, int buflen)
 	if (unlikely(!(inode->i_opflags & IOP_DEFAULT_READLINK))) {
 		if (unlikely(inode->i_op->readlink))
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-		{
-			if (SUSFS_IS_INODE_OPEN_REDIRECT(inode)) {
-				res = susfs_open_redirect_spoof_vfs_readlink(inode, buffer, buflen);
-				if (!res)
-					return res;
-			}
-			return inode->i_op->readlink(dentry, buffer, buflen);
+	if (unlikely(susfs_is_current_proc_umounted())) {
+		goto orig_flow;
+	}
+	if (SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(path.dentry->d_inode)) {
+		fake_filename = susfs_open_redirect_spoof_do_sys_openat(path.dentry->d_inode);
+		if (!IS_ERR_OR_NULL(fake_filename)) {
+			putname(filename);
+			filename = fake_filename;
 		}
-#else
-			return inode->i_op->readlink(dentry, buffer, buflen);
+	}
+orig_flow:
 #endif
 
 		if (!d_is_symlink(dentry))
