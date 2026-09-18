@@ -13,6 +13,9 @@
 #include <linux/fs_struct.h>
 #include <linux/sched/task.h>
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#include <linux/susfs_def.h>
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 extern bool susfs_is_current_ksu_domain(void);
 extern struct static_key_false susfs_is_hide_sus_mnts_for_non_su_procs_enabled;
 #endif
@@ -22,9 +25,9 @@ extern struct static_key_false susfs_is_hide_sus_mnts_for_non_su_procs_enabled;
 #include "pnode.h"
 #include "internal.h"
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-extern bool susfs_hide_sus_mnts_for_non_su_procs;
-extern bool susfs_is_current_ksu_domain(void);
+#include <linux/susfs_def.h>
 #endif
+
 
 static __poll_t mounts_poll(struct file *file, poll_table *wait)
 {
