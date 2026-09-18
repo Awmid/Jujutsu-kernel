@@ -29,164 +29,42 @@ extern bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
 extern void susfs_sus_kstat_spoof_proc_fd_seq_show(int *out_target_mnt_id, unsigned long *out_target_ino, dev_t target_dev);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 
-
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-extern int susfs_get_non_sus_mnt_id_from_mnt(struct mount *orig_mnt);
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-
-#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-extern bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
-extern void susfs_sus_kstat_spoof_proc_fd_seq_show(int *out_target_mnt_id, unsigned long *out_target_ino, dev_t target_dev);
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-extern int susfs_open_redirect_spoof_seq_show(struct inode *inode, int *out_mnt_id, unsigned long *out_ino);
-#endif
 static int seq_show(struct seq_file *m, void *v)
 {
-    struct files_struct *files = NULL;
-    int f_flags = 0, ret = -ENOENT;
-    struct file *file = NULL;
-    struct task_struct *task;
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-    struct mount *mnt = NULL;
-#endif
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-    int mnt_id = 0;
-    unsigned long ino = 0;
-#endif
+	struct files_struct *files = NULL;
+	int f_flags = 0, ret = -ENOENT;
+	struct file *file = NULL;
+	struct task_struct *task;
 
-    task = get_proc_task(m->private);
-    if (!task)
-        return -ENOENT;
+	task = get_proc_task(m->private);
+	if (!task)
+		return -ENOENT;
 
-    files = get_files_struct(task);
-    put_task_struct(task);
+	files = get_files_struct(task);
+	put_task_struct(task);
 
-    if (files) {
-        unsigned int fd = proc_fd(m->private);
+	if (files) {
+		unsigned int fd = proc_fd(m->private);
 
-        spin_lock(&files->file_lock);
-        file = fcheck_files(files, fd);
-        if (file) {
-            struct fdtable *fdt = files_fdtable(files);
+		spin_lock(&files->file_lock);
+		file = fcheck_files(files, fd);
+		if (file) {
+			struct fdtable *fdt = files_fdtable(files);
 
-            f_flags = file->f_flags;
-            if (close_on_exec(fd, fdt))
-                f_flags |= O_CLOEXEC;
+			f_flags = file->f_flags;
+			if (close_on_exec(fd, fdt))
+				f_flags |= O_CLOEXEC;
 
-            get_file(file);
-            ret = 0;
-        }
-        spin_unlock(&files->file_lock);
-        put_files_struct(files);
-    }
-
-    if (ret)
-        return ret;
-
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-    mnt = real_mount(file->f_path.mnt);
-    if (mnt->mnt_id >= DEFAULT_KSU_MNT_ID &&
-        likely(susfs_is_current_proc_umounted()))
-    {
-        struct path path;
-        char *pathname = kmalloc(PAGE_SIZE, GFP_KERNEL);
-        char *dpath;
-
-        if (!pathname) {
-            goto orig_flow;
-        }
-        dpath = d_path(&file->f_path, pathname, PAGE_SIZE);
-        if (!dpath) {
-            goto out_kfree;
-        }
-        if (kern_path(dpath, 0, &path)) {
-            goto out_kfree;
-        }
-        if (!path.dentry->d_inode) {
-            goto out_path_put;
-        }
-
-        seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\nino:\t%lu\n",
-                (long long)file->f_pos, f_flags,
-                susfs_get_non_sus_mnt_id_from_mnt(mnt),
-                path.dentry->d_inode->i_ino);
-        path_put(&path);
-        kfree(pathname);
-        goto bypass_orig_flow;
-out_path_put:
-        path_put(&path);
-out_kfree:
-        kfree(pathname);
-        goto orig_flow;
-    }
-#endif
-
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-    if (SUSFS_IS_INODE_OPEN_REDIRECT(file_inode(file))) {
-        if (susfs_open_redirect_spoof_seq_show(file_inode(file), &mnt_id, &ino))
-            goto orig_flow;
-        seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\nino:\t%lu\n",
-                (long long)file->f_pos, f_flags,
-                mnt_id,
-                ino);
-        goto bypass_orig_flow;
-    }
-#endif
-
-#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-	if (susfs_is_current_app_uid()) {
-		struct inode *inode = file_inode(file);
-		bool is_fuse = false;
-		if (susfs_is_inode_sus_kstat(inode, &is_fuse)) {
-			int mnt_id = real_mount(file->f_path.mnt)->mnt_id;
-			unsigned long ino = inode->i_ino;
-			susfs_sus_kstat_spoof_proc_fd_seq_show(&mnt_id, &ino, inode->i_sb->s_dev);
-			seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\nino:\t%lu\n",
-					(long long)file->f_pos, f_flags,
-					mnt_id,
-					ino);
-			goto bypass_orig_flow;
+			get_file(file);
+			ret = 0;
 		}
+		spin_unlock(&files->file_lock);
+		put_files_struct(files);
 	}
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (likely(susfs_is_current_proc_umounted())) {
-		struct mount *mnt = real_mount(file->f_path.mnt);
-		if (mnt->mnt_id >= DEFAULT_KSU_MNT_ID) {
-			struct path path;
-			char *pathname = kmalloc(PAGE_SIZE, GFP_KERNEL);
-			char *dpath;
-			if (!pathname) {
-				goto orig_flow;
-			}
-			dpath = d_path(&file->f_path, pathname, PAGE_SIZE);
-			if (!dpath) {
-				goto out_kfree;
-			}
-			if (kern_path(dpath, 0, &path)) {
-				goto out_kfree;
-			}
-			if (!d_backing_inode(path.dentry)) {
-				goto out_path_put;
-			}
-			seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\nino:\t%lu\n",
-					(long long)file->f_pos, f_flags,
-					susfs_get_non_sus_mnt_id_from_mnt(mnt),
-					d_backing_inode(path.dentry)->i_ino);
-			path_put(&path);
-			kfree(pathname);
-			goto bypass_orig_flow;
-out_path_put:
-			path_put(&path);
-out_kfree:
-			kfree(pathname);
-			goto orig_flow;
-		}
-	}
-orig_flow:
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
+	if (ret)
+		return ret;
+
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 	if (susfs_is_current_app_uid()) {
 		struct inode *inode = file_inode(file);
@@ -242,16 +120,24 @@ out_kfree:
 	}
 orig_flow:
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
 	seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\n",
 		   (long long)file->f_pos, f_flags,
 		   real_mount(file->f_path.mnt)->mnt_id);
 
 #if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_SUS_KSTAT)
 bypass_orig_flow:
-#endif
+#endif // #if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_SUS_KSTAT)
 	show_fd_locks(m, file, files);
 	if (seq_has_overflowed(m))
 		goto out;
+
+	if (file->f_op->show_fdinfo)
+		file->f_op->show_fdinfo(m, file);
+
+out:
+	fput(file);
+	return 0;
 }
 static int seq_fdinfo_open(struct inode *inode, struct file *file)
 {
