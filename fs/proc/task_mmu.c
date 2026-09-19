@@ -495,20 +495,6 @@ static int show_vma_header_prefix(struct seq_file *m, unsigned long start,
 
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 extern void susfs_sus_kstat_spoof_show_map_vma(struct inode *inode, dev_t *out_dev, unsigned long *out_ino);
-#endif
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-extern int susfs_open_redirect_spoof_show_map_vma(struct inode *inode, unsigned long *out_ino, dev_t *out_dev, char *spoofed_name);
-#endif
-
-#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-extern void susfs_sus_kstat_spoof_show_map_vma(struct inode *inode, dev_t *out_dev, unsigned long *out_ino);
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-extern int susfs_open_redirect_spoof_show_map_vma(struct inode *inode, unsigned long *out_ino, dev_t *out_dev, char *spoofed_name);
-#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-
-#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-extern void susfs_sus_kstat_spoof_show_map_vma(struct inode *inode, dev_t *out_dev, unsigned long *out_ino);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 extern struct srcu_struct susfs_srcu_open_redirect;
@@ -526,96 +512,50 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 	unsigned long start, end;
 	dev_t dev = 0;
 	const char *name = NULL;
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-    char *spoofed_redirected_name = NULL;
-#endif
 
 	if (file) {
 		struct inode *inode = file_inode(vma->vm_file);
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-        if (SUSFS_IS_INODE_OPEN_REDIRECT(inode)) {
-            if (!susfs_open_redirect_spoof_show_map_vma(inode, &ino, &dev, spoofed_redirected_name)) {
-                pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
-                goto orig_flow;
-            }
-        }
-#endif
-#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-        if (SUSFS_IS_INODE_SUS_MAP(inode)) {
-            seq_setwidth(m, 25 + sizeof(void *) * 6 - 1);
-            seq_put_hex_ll(m, NULL, vma->vm_start, 8);
-            seq_put_hex_ll(m, "-", vma->vm_end, 8);
-            seq_putc(m, ' ');
-            seq_putc(m, '-');
-            seq_putc(m, '-');
-            seq_putc(m, '-');
-            seq_putc(m, 'p');
-            seq_put_hex_ll(m, " ", pgoff, 8);
-            seq_put_hex_ll(m, " ", MAJOR(dev), 2);
-            seq_put_hex_ll(m, ":", MINOR(dev), 2);
-            seq_put_decimal_ull(m, " ", ino);
-            seq_putc(m, ' ');
-            goto done;
-        }
-#endif
-        dev = inode->i_sb->s_dev;
-        ino = inode->i_ino;
-        pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
-#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-        susfs_sus_kstat_spoof_show_map_vma(inode, &dev, &ino);
-#endif
-	}
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-orig_flow:
-#endif
-    start = vma->vm_start;
-	end = vma->vm_end;
-	if (show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino))
-		return;
-
-	/*
-	 * Print the dentry name for named mappings, and a
-	 * special [heap] marker for the heap:
-	 */
-
-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-	if (spoofed_redirected_name) {
-		seq_pad(m, ' ');
-		seq_puts(m, spoofed_redirected_name);
-		seq_putc(m, '\n');
-		kfree(spoofed_redirected_name);
-		return;
-	}
-#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-
-	if (file) {
-		char *buf;
-		size_t size = seq_get_buf(m, &buf);
-
-		/*
-		 * This won't escape newline characters from the path. If a
-		 * program uses newlines in its paths then it can kick rocks.
-		 */
-		if (size > 1) {
-			char *p;
-
-			p = d_path(&file->f_path, buf, size);
-			if (!IS_ERR(p)) {
-				size_t len;
-
-				/* Minus one to exclude the NUL character */
-				len = size - (p - buf) - 1;
-				if (likely(p > buf))
-					memmove(buf, p, len);
-				buf[len] = '\n';
-				seq_commit(m, len + 1);
+		if (SUSFS_IS_INODE_OPEN_REDIRECT(inode)) {
+			char *spoofed_redirected_name = NULL;
+			int srcu_idx = srcu_read_lock(&susfs_srcu_open_redirect);
+			int ret = susfs_open_redirect_spoof_show_map_vma_srcu(inode, &ino, &dev, &spoofed_redirected_name);
+			if (!ret) {
+				pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
+				start = vma->vm_start;
+				end = vma->vm_end;
+				show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino);
+				seq_pad(m, " ");
+				if (spoofed_redirected_name)
+					seq_puts(m, spoofed_redirected_name);
+				seq_putc(m, "
+");
+				srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
 				return;
 			}
+			srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
 		}
+#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+		if (SUSFS_IS_INODE_SUS_MAP(inode))
+			return;
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+		dev = inode->i_sb->s_dev;
+		ino = inode->i_ino;
+		pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+		susfs_sus_kstat_spoof_show_map_vma(inode, &dev, &ino);
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+	}
 
-		/* Set the overflow status to get more memory */
-		seq_commit(m, -1);
-		return;
+	start = vma->vm_start;
+	end = vma->vm_end;
+	show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino);
+	if (file) {
+		seq_pad(m, " ");
+		seq_file_path(m, file, "
+");
+		goto done;
 	}
 
 	if (vma->vm_ops && vma->vm_ops->name) {
@@ -627,31 +567,27 @@ orig_flow:
 	name = arch_vma_name(vma);
 	if (!name) {
 		if (!mm) {
-			seq_write(m, "[vdso]\n", 7);
-			return;
+			name = "[vdso]";
+			goto done;
 		}
 
 		if (vma->vm_start <= mm->brk &&
 		    vma->vm_end >= mm->start_brk) {
-			seq_write(m, "[heap]\n", 7);
-			return;
+			name = "[heap]";
+			goto done;
 		}
 
-		if (is_stack(vma)) {
-			seq_write(m, "[stack]\n", 8);
-			return;
-		}
-
-		if (vma_get_anon_name(vma)) {
-			seq_print_vma_name(m, vma);
-			return;
-		}
+		if (is_stack(vma))
+			name = "[stack]";
 	}
 
 done:
-	if (name)
+	if (name) {
+		seq_pad(m, " ");
 		seq_puts(m, name);
-	seq_putc(m, '\n');
+	}
+	seq_putc(m, "
+");
 }
 
 static int show_map(struct seq_file *m, void *v)
