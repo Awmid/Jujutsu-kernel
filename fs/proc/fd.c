@@ -28,7 +28,6 @@ extern int susfs_get_non_sus_mnt_id_from_mnt(struct mount *orig_mnt);
 extern bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
 extern void susfs_sus_kstat_spoof_proc_fd_seq_show(int *out_target_mnt_id, unsigned long *out_target_ino, dev_t target_dev);
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-
 static int seq_show(struct seq_file *m, void *v)
 {
 	struct files_struct *files = NULL;
@@ -36,31 +35,31 @@ static int seq_show(struct seq_file *m, void *v)
 	struct file *file = NULL;
 	struct task_struct *task;
 
-    task = get_proc_task(m->private);
-    if (!task)
-        return -ENOENT;
+	task = get_proc_task(m->private);
+	if (!task)
+		return -ENOENT;
 
-    files = get_files_struct(task);
-    put_task_struct(task);
+	files = get_files_struct(task);
+	put_task_struct(task);
 
-    if (files) {
-        unsigned int fd = proc_fd(m->private);
+	if (files) {
+		unsigned int fd = proc_fd(m->private);
 
-        spin_lock(&files->file_lock);
-        file = fcheck_files(files, fd);
-        if (file) {
-            struct fdtable *fdt = files_fdtable(files);
+		spin_lock(&files->file_lock);
+		file = fcheck_files(files, fd);
+		if (file) {
+			struct fdtable *fdt = files_fdtable(files);
 
-            f_flags = file->f_flags;
-            if (close_on_exec(fd, fdt))
-                f_flags |= O_CLOEXEC;
+			f_flags = file->f_flags;
+			if (close_on_exec(fd, fdt))
+				f_flags |= O_CLOEXEC;
 
-            get_file(file);
-            ret = 0;
-        }
-        spin_unlock(&files->file_lock);
-        put_files_struct(files);
-    }
+			get_file(file);
+			ret = 0;
+		}
+		spin_unlock(&files->file_lock);
+		put_files_struct(files);
+	}
 
 	if (ret)
 		return ret;
@@ -132,17 +131,14 @@ bypass_orig_flow:
 	if (seq_has_overflowed(m))
 		goto out;
 
-    show_fd_locks(m, file, files);
-    if (seq_has_overflowed(m))
-        goto out;
-
-    if (file->f_op->show_fdinfo)
-        file->f_op->show_fdinfo(m, file);
+	if (file->f_op->show_fdinfo)
+		file->f_op->show_fdinfo(m, file);
 
 out:
-    fput(file);
-    return 0;
+	fput(file);
+	return 0;
 }
+
 static int seq_fdinfo_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, seq_show, inode);

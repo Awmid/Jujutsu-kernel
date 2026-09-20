@@ -28,10 +28,11 @@
 #include <linux/sched/task.h>
 #ifdef CONFIG_KSU_SUSFS
 #include <linux/susfs_def.h>
-#endif
+#endif // #ifdef CONFIG_KSU_SUSFS
 
 #include "pnode.h"
 #include "internal.h"
+
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 extern bool susfs_is_current_ksu_domain(void);
 extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;
@@ -39,6 +40,7 @@ extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;
 #define CL_COPY_MNT_NS BIT(25) /* used by copy_mnt_ns() */
 
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
 /* Maximum number of mounts in a mount namespace */
 unsigned int sysctl_mount_max __read_mostly = 100000;
 
@@ -1117,12 +1119,14 @@ vfs_kern_mount(struct file_system_type *type, int flags, const char *name, void 
 		}
 	}
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-    mnt = alloc_vfsmnt(name);
+
+	mnt = alloc_vfsmnt(name);
+
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 bypass_orig_flow:
-#endif
-    if (!mnt)
-        return ERR_PTR(-ENOMEM);
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	if (!mnt)
+		return ERR_PTR(-ENOMEM);
 
 	if (type->alloc_mnt_data) {
 		mnt->mnt.data = type->alloc_mnt_data();
@@ -1237,7 +1241,7 @@ bypass_orig_flow:
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	if (static_branch_unlikely(&susfs_is_sdcard_android_data_not_decrypted)) {
 		if (susfs_is_current_ksu_domain() && (flag & CL_COPY_MNT_NS))
-			mnt->mnt.mnt_flags |= VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT;
+		mnt->mnt.mnt_flags |= VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT;
 	}
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 
@@ -1586,7 +1590,7 @@ static void namespace_unlock(void)
 	if (likely(hlist_empty(&head)))
 		return;
 
-	synchronize_rcu_expedited();
+	synchronize_rcu();
 
 	group_pin_kill(&head);
 }
@@ -1917,37 +1921,6 @@ SYSCALL_DEFINE1(oldumount, char __user *, name)
 }
 
 #endif
-
-static int can_umount(const struct path *path, int flags)
- {
-	 struct mount *mnt = real_mount(path->mnt);
-	 if (flags & ~(MNT_FORCE | MNT_DETACH | MNT_EXPIRE | UMOUNT_NOFOLLOW))
-		 return -EINVAL;
-	 if (!may_mount())
-		 return -EPERM;
-	 if (path->dentry != path->mnt->mnt_root)
-		 return -EINVAL;
-	 if (!check_mnt(mnt))
-		 return -EINVAL;
-	 if (mnt->mnt.mnt_flags & MNT_LOCKED)
-		 return -EINVAL;
-	 if (flags & MNT_FORCE && !capable(CAP_SYS_ADMIN))
-		 return -EPERM;
-	 return 0;
- }
-
-int path_umount(struct path *path, int flags)
- {
-	 struct mount *mnt = real_mount(path->mnt);
-	 int ret;
-	 ret = can_umount(path, flags);
-	 if (!ret)
-		 ret = do_umount(mnt, flags);
-	 dput(path->dentry);
-	 mntput_no_expire(mnt);
-	 return ret;
- }
- EXPORT_SYMBOL_GPL(path_umount);
 
 static bool is_mnt_ns_file(struct dentry *dentry)
 {
@@ -3764,7 +3737,6 @@ const struct proc_ns_operations mntns_operations = {
 	.install	= mntns_install,
 	.owner		= mntns_owner,
 };
-
 
 #ifdef CONFIG_KSU_SUSFS
 /* - To retrieve the non sus mnt_id from mount */

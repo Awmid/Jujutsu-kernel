@@ -15,16 +15,16 @@
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 #include <linux/susfs_def.h>
 #endif
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-extern bool susfs_is_current_ksu_domain(void);
-extern struct static_key_false susfs_is_hide_sus_mnts_for_non_su_procs_enabled;
-#endif
 
 #include "proc/internal.h" /* only for get_proc_task() in ->open() */
 
 #include "pnode.h"
 #include "internal.h"
 
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+extern bool susfs_is_current_ksu_domain(void);
+extern struct static_key_false susfs_is_hide_sus_mnts_for_non_su_procs_enabled;
+#endif
 
 static __poll_t mounts_poll(struct file *file, poll_table *wait)
 {

@@ -123,12 +123,12 @@ struct old_linux_dirent {
 };
 
 struct readdir_callback {
-    struct dir_context ctx;
-    struct old_linux_dirent __user * dirent;
+	struct dir_context ctx;
+	struct old_linux_dirent __user * dirent;
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 	struct super_block *sb;
 #endif
-    int result;
+	int result;
 };
 
 static int fillonedir(struct dir_context *ctx, const char *name, int namlen,
@@ -366,14 +366,14 @@ orig_flow:
 }
 
 struct getdents_callback64 {
-    struct dir_context ctx;
-    struct linux_dirent64 __user * current_dir;
+	struct dir_context ctx;
+	struct linux_dirent64 __user * current_dir;
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 	struct super_block *sb;
 #endif
-    struct linux_dirent64 __user * previous;
-    int count;
-    int error;
+	struct linux_dirent64 __user * previous;
+	int count;
+	int error;
 };
 
 static int filldir64(struct dir_context *ctx, const char *name, int namlen,
