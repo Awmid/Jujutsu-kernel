@@ -1,0 +1,2 @@
+Inputs: JackA1ltman/NonGKI_Kernel_Build_2nd @ ac370f5 (patch last changed f15603b, Sep 17 2026); ReSukiSU 6d18926ae6eeb571a04c1ce7552c324d606fa9d8; SUSFS v2.3.0
+Built from Awmid/Jujutsu-kernel V7 @ 1c2b77e6d
