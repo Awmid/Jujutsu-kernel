@@ -524,12 +524,14 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 				pgoff = ((loff_t)vma->vm_pgoff) << PAGE_SHIFT;
 				start = vma->vm_start;
 				end = vma->vm_end;
-				show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino);
-				seq_pad(m, " ");
+				if (show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino)) {
+					srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
+					return;
+				}
+				seq_pad(m, ' ');
 				if (spoofed_redirected_name)
 					seq_puts(m, spoofed_redirected_name);
-				seq_putc(m, "
-");
+				seq_putc(m, '\n');
 				srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
 				return;
 			}
@@ -550,12 +552,42 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 
 	start = vma->vm_start;
 	end = vma->vm_end;
-	show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino);
+	if (show_vma_header_prefix(m, start, end, flags, pgoff, dev, ino))
+		return;
+
+	/*
+	 * Print the dentry name for named mappings, and a
+	 * special [heap] marker for the heap:
+	 */
+
 	if (file) {
-		seq_pad(m, " ");
-		seq_file_path(m, file, "
-");
-		goto done;
+		char *buf;
+		size_t size = seq_get_buf(m, &buf);
+
+		/*
+		 * This won't escape newline characters from the path. If a
+		 * program uses newlines in its paths then it can kick rocks.
+		 */
+		if (size > 1) {
+			char *p;
+
+			p = d_path(&file->f_path, buf, size);
+			if (!IS_ERR(p)) {
+				size_t len;
+
+				/* Minus one to exclude the NUL character */
+				len = size - (p - buf) - 1;
+				if (likely(p > buf))
+					memmove(buf, p, len);
+				buf[len] = '\n';
+				seq_commit(m, len + 1);
+				return;
+			}
+		}
+
+		/* Set the overflow status to get more memory */
+		seq_commit(m, -1);
+		return;
 	}
 
 	if (vma->vm_ops && vma->vm_ops->name) {
@@ -567,27 +599,31 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 	name = arch_vma_name(vma);
 	if (!name) {
 		if (!mm) {
-			name = "[vdso]";
-			goto done;
+			seq_write(m, "[vdso]\n", 7);
+			return;
 		}
 
 		if (vma->vm_start <= mm->brk &&
 		    vma->vm_end >= mm->start_brk) {
-			name = "[heap]";
-			goto done;
+			seq_write(m, "[heap]\n", 7);
+			return;
 		}
 
-		if (is_stack(vma))
-			name = "[stack]";
+		if (is_stack(vma)) {
+			seq_write(m, "[stack]\n", 8);
+			return;
+		}
+
+		if (vma_get_anon_name(vma)) {
+			seq_print_vma_name(m, vma);
+			return;
+		}
 	}
 
 done:
-	if (name) {
-		seq_pad(m, " ");
+	if (name)
 		seq_puts(m, name);
-	}
-	seq_putc(m, "
-");
+	seq_putc(m, '\n');
 }
 
 static int show_map(struct seq_file *m, void *v)
@@ -1027,25 +1063,6 @@ static int show_smap(struct seq_file *m, void *v)
 
 	memset(&mss, 0, sizeof(mss));
 
-#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-	if (vma->vm_file) {
-		struct inode *inode = file_inode(vma->vm_file);
-		if (SUSFS_IS_INODE_SUS_MAP(inode)) {
-			show_map_vma(m, vma);
-			SEQ_PUT_DEC("Size:           ", vma->vm_end - vma->vm_start);
-			SEQ_PUT_DEC(" kB\nKernelPageSize: ", vma_kernel_pagesize(vma));
-			SEQ_PUT_DEC(" kB\nMMUPageSize:    ", vma_mmu_pagesize(vma));
-			seq_puts(m, " kB\n");
-			__show_smap(m, &mss);
-			if (arch_pkeys_enabled())
-					seq_printf(m, "ProtectionKey:  %8u\n", vma_pkey(vma));
-			seq_puts(m, "VmFlags: mr mw me");
-			seq_putc(m, '\n');
-			goto bypass_orig_flow;
-		}
-	}
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
-
 	smap_gather_stats(vma, &mss);
 
 	show_map_vma(m, vma);
@@ -1067,9 +1084,6 @@ static int show_smap(struct seq_file *m, void *v)
 		seq_printf(m, "ProtectionKey:  %8u\n", vma_pkey(vma));
 	show_smap_vma_flags(m, vma);
 
-#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-bypass_orig_flow:
-#endif
 	m_cache_vma(m, vma);
 
 	return 0;
@@ -1104,14 +1118,11 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
 
 	for (vma = priv->mm->mmap; vma;) {
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP
-       if (vma->vm_file) {
-               struct inode *inode = file_inode(vma->vm_file);
-               if (SUSFS_IS_INODE_SUS_MAP(inode)) {
-                       memset(&mss, 0, sizeof(mss));
-                       goto bypass_orig_flow;
-               }
-       }
-#endif
+		if (vma->vm_file) {
+			if (SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
+				goto bypass_orig_flow;
+		}
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 		smap_gather_stats(vma, &mss);
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 bypass_orig_flow:
@@ -1883,16 +1894,15 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
 		ret = down_read_killable(&mm->mmap_sem);
 		if (ret)
 			goto out_free;
-		ret = walk_page_range(start_vaddr, end, &pagemap_walk);
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 		vma = find_vma(mm, start_vaddr);
-		if (vma && vma->vm_file) {
-			struct inode *inode = file_inode(vma->vm_file);
-			if (SUSFS_IS_INODE_SUS_MAP(inode)) {
-				pm.buffer->pme = 0;
-			}
-		}
-#endif
+		if (vma && vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
+			goto bypass_orig_flow;
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+		ret = walk_page_range(start_vaddr, end, &pagemap_walk);
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+bypass_orig_flow:
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 		up_read(&mm->mmap_sem);
 		start_vaddr = end;
 

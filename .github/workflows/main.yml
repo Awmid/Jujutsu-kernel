@@ -58,7 +58,7 @@ jobs:
 
       - name: Integrate KernelSU-Next
         run: |
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s f7be4a53bd39d4a03876eba5e888818b1a1fcaac
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/6d18926ae6eeb571a04c1ce7552c324d606fa9d8/kernel/setup.sh" | bash -s 6d18926ae6eeb571a04c1ce7552c324d606fa9d8
           
       - name: Build kernel
         run: |
