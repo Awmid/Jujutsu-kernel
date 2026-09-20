@@ -390,11 +390,6 @@ static void tlb_remove_table_smp_sync(void *arg)
 	/* Simply deliver the interrupt */
 }
 
-void tlb_remove_table_sync_one(void)
-{
-	smp_call_function(tlb_remove_table_smp_sync, NULL, 1);
-}
-
 static void tlb_remove_table_one(void *table)
 {
 	/*
@@ -4076,11 +4071,9 @@ static vm_fault_t do_read_fault(struct vm_fault *vmf)
 	 * something).
 	 */
 	if (vma->vm_ops->map_pages && fault_around_bytes >> PAGE_SHIFT > 1) {
-		if (likely(!userfaultfd_minor(vmf->vma))) {
- 			ret = do_fault_around(vmf);
- 			if (ret)
- 				return ret;
- 		}
+		ret = do_fault_around(vmf);
+		if (ret)
+			return ret;
 	}
 
 	ret = __do_fault(vmf);
