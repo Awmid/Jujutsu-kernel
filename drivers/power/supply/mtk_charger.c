@@ -665,7 +665,7 @@ void do_sw_jeita_state_machine(struct mtk_charger *info)
 		else
 			sw_jeita->cv = info->data.battery_cv;
 	} else {
-		sw_jeita->cv = 0;
+		sw_jeita->cv = info->data.jeita_temp_t2_to_t3_cv;
 	}
 
 	chr_err("[SW_JEITA]preState:%d newState:%d tmp:%d cv:%d\n",
