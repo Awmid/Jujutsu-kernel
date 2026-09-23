@@ -286,7 +286,7 @@ bool is_charger_exist(struct mtk_charger *info)
 
 int get_charger_type(struct mtk_charger *info)
 {
-	union power_supply_propval prop, prop2, prop3;
+	union power_supply_propval prop = {0}, prop2 = {0}, prop3 = {0};
 	static struct power_supply *chg_psy;
 	int ret;
 
