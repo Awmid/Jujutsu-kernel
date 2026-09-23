@@ -34,7 +34,6 @@ jobs:
 
       - name: Configure git
         run: |
-          git config --global http.sslVerify false
           git config --global url."https://".insteadOf git://
 
       - name: Clone crdroid Clang
