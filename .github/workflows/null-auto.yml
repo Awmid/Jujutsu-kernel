@@ -1,38 +1,24 @@
-name: Ccache Keep-Alive (Automated)
+name: Cache Keep-Alive
 
 on:
   schedule:
-    - cron: '0 0 * * 3,0'   # Runs automatically every Wednesday and Sunday at midnight UTC
-  workflow_dispatch:        # Allows you to trigger it manually via a button if you want
+    - cron: '0 0 * * 3,0'   # Wed + Sun, 00:00 UTC
+  workflow_dispatch:
 
 jobs:
-  refresh_cache:
-    name: Touch Cache Storage
+  keep_alive:
     runs-on: ubuntu-22.04
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          ref: clang-test   # Change this to V7 or V8 when you switch active branches!
-
-      - name: Configure Compiler Cache
-        uses: actions/cache@v4
+      - name: Touch ccache
+        uses: actions/cache/restore@v4
         with:
           path: /home/runner/.ccache
-          key: ${{ runner.os }}-kernel-ccache-v1
+          key: ${{ runner.os }}-kernel-ccache-keepalive-nomatch
           restore-keys: |
             ${{ runner.os }}-kernel-ccache-
 
-      - name: Install minimal toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ccache
-
-      - name: Fake Build / Touch Cache
-        run: |
-          ccache -M 5G
-          mkdir -p ~/.ccache
-          echo "$(date)" > ~/.ccache/keep_alive.txt
-          ccache -s
-          echo "Cache ticked and modified successfully. Expiry clock reset!"
+      - name: Touch ZyC Clang
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/clang
+          key: zyc-clang-16.0.6-20260807

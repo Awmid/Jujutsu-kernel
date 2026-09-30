@@ -47,30 +47,34 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /home/runner/.ccache
-          # CHANGED: We use a fixed string "v1" instead of the commit hash.
-          # GitHub will now update the same cache database rather than making duplicate giant files.
-          key: ${{ runner.os }}-kernel-ccache-v1
+          key: ${{ runner.os }}-kernel-ccache-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-kernel-ccache-
 
+      - name: Cache ZyC Clang
+        id: clang-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/clang
+          # Bump this string whenever you change ZYC_CLANG_URL
+          key: zyc-clang-16.0.6-20260807            
+
       - name: Download ZyC Clang
+        if: steps.clang-cache.outputs.cache-hit != 'true'
         run: |
           set -eo pipefail
-          if [[ "$ZYC_CLANG_URL" == PASTE_* ]]; then
-            echo "::error::Set ZYC_CLANG_URL to a real release asset URL"
-            exit 1
-          fi
           mkdir -p /tmp/clang
           curl -fL --retry 3 -o /tmp/zyc_clang.tar "$ZYC_CLANG_URL"
           tar -C /tmp/clang -xf /tmp/zyc_clang.tar
           rm -f /tmp/zyc_clang.tar
-          CLANG_BIN="/tmp/clang/bin"
-          if [ ! -x "$CLANG_BIN/clang" ]; then
-            echo "::error::clang not found in $CLANG_BIN"
-            ls -la "$CLANG_BIN" | grep -i clang || true
+
+      - name: Add clang to PATH
+        run: |
+          if [ ! -x /tmp/clang/bin/clang ]; then
+            echo "::error::clang not found in /tmp/clang/bin"
             exit 1
           fi
-          echo "$CLANG_BIN" >> "$GITHUB_PATH"
+          echo "/tmp/clang/bin" >> "$GITHUB_PATH"
           
       - name: Verify toolchain
         run: |
@@ -104,10 +108,12 @@ jobs:
           export CROSS_COMPILE="aarch64-linux-gnu-"
           export CROSS_COMPILE_ARM32="arm-linux-gnueabi-"
           
-          # ADDED/CHANGED ccache settings
           export CCACHE_DIR=/home/runner/.ccache
-          ccache -M 5G
-          echo "=== CCACHE INITIAL STATS ==="
+          export CCACHE_MAXSIZE=3G
+          export CCACHE_COMPILERCHECK=content
+          export CCACHE_NOHASHDIR=1
+          export CCACHE_BASEDIR="$PWD"
+          export CCACHE_SLOPPINESS=time_macros,include_file_mtime,include_file_ctime          echo "=== CCACHE INITIAL STATS ==="
           ccache -s                  # Prints stats before the build starts
           
           MAKE_ARGS=(
