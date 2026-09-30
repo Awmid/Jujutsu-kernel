@@ -47,10 +47,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ${{ runner.os }}-kernel-ccache-${{ github.sha }}
+          # CHANGED: We use a fixed string "v1" instead of the commit hash.
+          # GitHub will now update the same cache database rather than making duplicate giant files.
+          key: ${{ runner.os }}-kernel-ccache-v1
           restore-keys: |
             ${{ runner.os }}-kernel-ccache-
-          
 
       - name: Download ZyC Clang
         run: |
@@ -63,8 +64,6 @@ jobs:
           curl -fL --retry 3 -o /tmp/zyc_clang.tar "$ZYC_CLANG_URL"
           tar -C /tmp/clang -xf /tmp/zyc_clang.tar
           rm -f /tmp/zyc_clang.tar
-
-          # Archive layout varies: find the real bin dir instead of assuming it
           CLANG_BIN="/tmp/clang/bin"
           if [ ! -x "$CLANG_BIN/clang" ]; then
             echo "::error::clang not found in $CLANG_BIN"
@@ -87,23 +86,23 @@ jobs:
 
       - name: Strip -Werror from vendor drivers
         run: |
-          # Modern Clang flags old MTK code; subdir -Werror can't be overridden via KCFLAGS
           find drivers -type f \( -name 'Makefile*' -o -name 'Kbuild*' \) -print0 \
+
             | xargs -0 sed -i 's/-Werror[^ ]*//g' || true
 
       - name: Build kernel
         run: |
           set -eo pipefail
-
           export ARCH=${KERNEL_ARCH}
           export CLANG_TRIPLE="aarch64-linux-gnu-"
           export CROSS_COMPILE="aarch64-linux-gnu-"
           export CROSS_COMPILE_ARM32="arm-linux-gnueabi-"
-          # ccache settings
-          ccache -M 5G
-          ccache -s
           
-
+          # ADDED/CHANGED ccache settings
+          ccache -M 5G
+          echo "=== CCACHE INITIAL STATS ==="
+          ccache -s                  # Prints stats before the build starts
+          
           MAKE_ARGS=(
             O=out
             ARCH=${ARCH}
@@ -123,11 +122,13 @@ jobs:
             CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32}
             KCFLAGS="-Wno-error"
           )
-
           make "${MAKE_ARGS[@]}" ${KERNEL_DEFCONFIG}
-
           echo "Building Jujutsu Kernel with ZyC Clang..."
           make -j"$(nproc)" "${MAKE_ARGS[@]}" 2>&1 | tee build.log
+          
+          echo "=== CCACHE FINAL STATS ==="
+          ccache -s                  # ADDED: Prints stats AFTER the build finishes!
+
 
       - name: Show first errors
         if: failure()
