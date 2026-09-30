@@ -42,6 +42,15 @@ jobs:
       - name: Configure git
         run: |
           git config --global url."https://".insteadOf git://
+          
+      - name: Configure Compiler Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-kernel-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-kernel-ccache-
+          
 
       - name: Download ZyC Clang
         run: |
@@ -90,11 +99,15 @@ jobs:
           export CLANG_TRIPLE="aarch64-linux-gnu-"
           export CROSS_COMPILE="aarch64-linux-gnu-"
           export CROSS_COMPILE_ARM32="arm-linux-gnueabi-"
+          # ccache settings
+          ccache -M 5G
+          ccache -s
+          
 
           MAKE_ARGS=(
             O=out
             ARCH=${ARCH}
-            CC=clang
+            CC="ccache clang"
             HOSTCC=clang
             HOSTCXX=clang++
             LD=ld.lld
