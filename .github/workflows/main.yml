@@ -138,11 +138,11 @@ jobs:
           )
           make "${MAKE_ARGS[@]}" ${KERNEL_DEFCONFIG}
           echo "Building Jujutsu Kernel with ZyC Clang..."
+          ccache -z
           make -j"$(nproc)" "${MAKE_ARGS[@]}" 2>&1 | tee build.log
-          
-          echo "=== CCACHE FINAL STATS ==="
-          ccache -s                  # ADDED: Prints stats AFTER the build finishes!
 
+          echo "=== CCACHE FINAL STATS ===" | tee -a build.log
+          ccache -s | tee -a build.log
 
       - name: Show first errors
         if: failure()
