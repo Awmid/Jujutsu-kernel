@@ -36,7 +36,7 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update
           sudo apt-get install -y bc bison flex build-essential libssl-dev libelf-dev cpio kmod git zip curl ca-certificates jq \
-            zstd xz-utils lld \
+            zstd xz-utils lld ccache \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
 
       - name: Configure git
