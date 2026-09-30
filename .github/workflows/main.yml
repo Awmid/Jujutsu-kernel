@@ -85,10 +85,16 @@ jobs:
           curl -fLSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/${RESUKISU_COMMIT}/kernel/setup.sh" | bash -s "${RESUKISU_COMMIT}"
 
       - name: Strip -Werror from vendor drivers
+        # We explicitly use bash and allow it to continue even if a single file has an issue
+        shell: bash
         run: |
-          find drivers -type f \( -name 'Makefile*' -o -name 'Kbuild*' \) -print0 \
-
-            | xargs -0 sed -i 's/-Werror[^ ]*//g' || true
+          echo "Stripping -Werror flags from Makefiles safely..."
+          # Using -type f -not -type l skips broken symlinks completely
+          find drivers -type f -not -type l \( -name 'Makefile*' -o -name 'Kbuild*' \) -print0 | while IFS= read -r -d '' file; do
+            # Run sed individually on files, ignoring errors so one bad file won't crash the pipeline
+            sed -i 's/-Werror[^ ]*//g' "$file" 2>/dev/null || true
+          done
+          echo "Finished processing driver Makefiles."
 
       - name: Build kernel
         run: |
