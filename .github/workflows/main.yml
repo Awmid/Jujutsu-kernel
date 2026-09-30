@@ -56,14 +56,14 @@ jobs:
           rm -f /tmp/zyc_clang.tar
 
           # Archive layout varies: find the real bin dir instead of assuming it
-          CLANG_BIN="$(dirname "$(find /tmp/clang -type f -name clang -path '*/bin/*' | head -n1)")"
-          if [ -z "$CLANG_BIN" ] || [ "$CLANG_BIN" = "." ]; then
-            echo "::error::clang binary not found in archive"
-            find /tmp/clang -maxdepth 3 | head -50
+          CLANG_BIN="/tmp/clang/bin"
+          if [ ! -x "$CLANG_BIN/clang" ]; then
+            echo "::error::clang not found in $CLANG_BIN"
+            ls -la "$CLANG_BIN" | grep -i clang || true
             exit 1
           fi
           echo "$CLANG_BIN" >> "$GITHUB_PATH"
-
+          
       - name: Verify toolchain
         run: |
           clang --version
