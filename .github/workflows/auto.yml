@@ -1,0 +1,38 @@
+name: Ccache Keep-Alive (Automated)
+
+on:
+  schedule:
+    - cron: '0 0 * * 3,0'   # Runs automatically every Wednesday and Sunday at midnight UTC
+  workflow_dispatch:        # Allows you to trigger it manually via a button if you want
+
+jobs:
+  refresh_cache:
+    name: Touch Cache Storage
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: clang-test   # Change this to V7 or V8 when you switch active branches!
+
+      - name: Configure Compiler Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-kernel-ccache-v1
+          restore-keys: |
+            ${{ runner.os }}-kernel-ccache-
+
+      - name: Install minimal toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache
+
+      - name: Fake Build / Touch Cache
+        run: |
+          ccache -M 5G
+          mkdir -p ~/.ccache
+          echo "$(date)" > ~/.ccache/keep_alive.txt
+          ccache -s
+          echo "Cache ticked and modified successfully. Expiry clock reset!"
