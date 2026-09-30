@@ -1,9 +1,9 @@
-name: Build Jujutsu Kernel with KernelSU-Next
+name: Build Jujutsu Kernel (ReSukiSU + SUSFS, ZyC Clang)
 
 on:
   push:
     branches:
-      - V7
+      - clang-test        # experiment branch, NOT V7
   workflow_dispatch:
 
 env:
@@ -11,6 +11,11 @@ env:
   KERNEL_ARCH: "arm64"
   KBUILD_BUILD_USER: "github-actions"
   KBUILD_BUILD_HOST: "ci-server"
+  # Fill this in from https://github.com/ZyCromerZ/Clang/releases
+  # Copy the exact asset URL of ONE release tag. Never use "latest".
+  ZYC_CLANG_URL: "https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260807-release/Clang-16.0.6-20260807.tar.gz"
+  # ReSukiSU commit, must match the vendored SUSFS files
+  RESUKISU_COMMIT: "6d18926ae6eeb571a04c1ce7552c324d606fa9d8"
 
 jobs:
   build_and_package:
@@ -20,66 +25,101 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+        
       - name: Integrate NoMount
         run: |
-          curl -sL https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s v2.0.0
+          set -eo pipefail
+          curl -fLSs "https://raw.githubusercontent.com/maxsteeel/nomount/<COMMIT_SHA>/kernel/setup.sh" | bash -s v2.0.0
 
       - name: Install dependencies
         run: |
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update
           sudo apt-get install -y bc bison flex build-essential libssl-dev libelf-dev cpio kmod git zip curl ca-certificates jq \
-            wget libffi-dev zlib1g-dev libreadline-dev libsqlite3-dev libbz2-dev libncurses5-dev libgdbm-dev liblzma-dev tk-dev
+            zstd xz-utils lld \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
 
       - name: Configure git
         run: |
           git config --global url."https://".insteadOf git://
 
-      - name: Clone crdroid Clang
+      - name: Download ZyC Clang
         run: |
-          echo "Cloning crdroid Clang..."
-          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r428724.git /tmp/clang
+          set -eo pipefail
+          if [[ "$ZYC_CLANG_URL" == PASTE_* ]]; then
+            echo "::error::Set ZYC_CLANG_URL to a real release asset URL"
+            exit 1
+          fi
+          mkdir -p /tmp/clang
+          curl -fL --retry 3 -o /tmp/zyc_clang.tar "$ZYC_CLANG_URL"
+          tar -C /tmp/clang -xf /tmp/zyc_clang.tar
+          rm -f /tmp/zyc_clang.tar
 
-      - name: Clone LineageOS GCC toolchains
+          # Archive layout varies: find the real bin dir instead of assuming it
+          CLANG_BIN="$(dirname "$(find /tmp/clang -type f -name clang -path '*/bin/*' | head -n1)")"
+          if [ -z "$CLANG_BIN" ] || [ "$CLANG_BIN" = "." ]; then
+            echo "::error::clang binary not found in archive"
+            find /tmp/clang -maxdepth 3 | head -50
+            exit 1
+          fi
+          echo "$CLANG_BIN" >> "$GITHUB_PATH"
+
+      - name: Verify toolchain
         run: |
-          echo "Cloning GCC ARM64..."
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git /tmp/gcc-aarch64
+          clang --version
+          ld.lld --version || true
+          aarch64-linux-gnu-gcc --version | head -1
+          arm-linux-gnueabi-gcc --version | head -1
 
-          echo "Cloning GCC ARM32..."
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git /tmp/gcc-arm
-
-      - name: Verify toolchains
+      - name: Integrate ReSukiSU (pinned)
         run: |
-          /tmp/clang/bin/clang --version
-          /tmp/gcc-aarch64/bin/aarch64-linux-android-gcc --version
-          /tmp/gcc-arm/bin/arm-linux-androideabi-gcc --version
+          set -eo pipefail
+          curl -fLSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/${RESUKISU_COMMIT}/kernel/setup.sh" | bash -s "${RESUKISU_COMMIT}"
 
-      - name: Integrate KernelSU-Next
+      - name: Strip -Werror from vendor drivers
         run: |
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/6d18926ae6eeb571a04c1ce7552c324d606fa9d8/kernel/setup.sh" | bash -s 6d18926ae6eeb571a04c1ce7552c324d606fa9d8
-          
+          # Modern Clang flags old MTK code; subdir -Werror can't be overridden via KCFLAGS
+          find drivers -type f \( -name 'Makefile*' -o -name 'Kbuild*' \) -print0 \
+            | xargs -0 sed -i 's/-Werror[^ ]*//g' || true
+
       - name: Build kernel
         run: |
-          export PATH="/tmp/clang/bin:/tmp/gcc-aarch64/bin:/tmp/gcc-arm/bin:${PATH}"
+          set -eo pipefail
 
           export ARCH=${KERNEL_ARCH}
-          export CROSS_COMPILE="aarch64-linux-android-"
-          export CROSS_COMPILE_ARM32="arm-linux-androideabi-"
-          export CC="clang"
           export CLANG_TRIPLE="aarch64-linux-gnu-"
+          export CROSS_COMPILE="aarch64-linux-gnu-"
+          export CROSS_COMPILE_ARM32="arm-linux-gnueabi-"
 
-          make O=out ARCH=${ARCH} ${KERNEL_DEFCONFIG}
+          MAKE_ARGS=(
+            O=out
+            ARCH=${ARCH}
+            CC=clang
+            HOSTCC=clang
+            HOSTCXX=clang++
+            LD=ld.lld
+            AR=llvm-ar
+            NM=llvm-nm
+            OBJCOPY=llvm-objcopy
+            OBJDUMP=llvm-objdump
+            OBJSIZE=llvm-size
+            READELF=llvm-readelf
+            STRIP=llvm-strip
+            CLANG_TRIPLE=${CLANG_TRIPLE}
+            CROSS_COMPILE=${CROSS_COMPILE}
+            CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32}
+            KCFLAGS="-Wno-error"
+          )
 
-          echo "Building Jujutsu Kernel with KernelSU-Next..."
-          make -j$(nproc) \
-            O=out \
-            ARCH=${ARCH} \
-            CC=clang \
-            CLANG_TRIPLE=${CLANG_TRIPLE} \
-            CROSS_COMPILE=${CROSS_COMPILE} \
-            CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32} \
-            2>&1 | tee build.log
+          make "${MAKE_ARGS[@]}" ${KERNEL_DEFCONFIG}
+
+          echo "Building Jujutsu Kernel with ZyC Clang..."
+          make -j"$(nproc)" "${MAKE_ARGS[@]}" 2>&1 | tee build.log
+
+      - name: Show first errors
+        if: failure()
+        run: |
+          grep -nE "error:|Error [0-9]|undefined reference" build.log | head -40 || true
 
       - name: Package AnyKernel3
         run: |
