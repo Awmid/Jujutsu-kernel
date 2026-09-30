@@ -46,7 +46,7 @@ jobs:
       - name: Configure Compiler Cache
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
+          path: /home/runner/.ccache
           # CHANGED: We use a fixed string "v1" instead of the commit hash.
           # GitHub will now update the same cache database rather than making duplicate giant files.
           key: ${{ runner.os }}-kernel-ccache-v1
@@ -105,6 +105,7 @@ jobs:
           export CROSS_COMPILE_ARM32="arm-linux-gnueabi-"
           
           # ADDED/CHANGED ccache settings
+          export CCACHE_DIR=/home/runner/.ccache
           ccache -M 5G
           echo "=== CCACHE INITIAL STATS ==="
           ccache -s                  # Prints stats before the build starts

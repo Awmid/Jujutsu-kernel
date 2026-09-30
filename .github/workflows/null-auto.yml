@@ -19,7 +19,7 @@ jobs:
       - name: Configure Compiler Cache
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
+          path: /home/runner/.ccache
           key: ${{ runner.os }}-kernel-ccache-v1
           restore-keys: |
             ${{ runner.os }}-kernel-ccache-
