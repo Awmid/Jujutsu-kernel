@@ -1,19 +1,18 @@
-Linux kernel
-============
+# Jujutsu Kernel
+Custom Linux kernel for blossom with KernelSU (ReSukiSU) and SUSFS
 
-There are several guides for kernel developers and users. These guides can
-be rendered in a number of formats, like HTML and PDF. Please read
-Documentation/admin-guide/README.rst first.
+## Features
+- ReSukiSU + SUSFS 
+- NoMount
+- WireGuard
+- Other edits. Check commits
 
-In order to build the documentation, use ``make htmldocs`` or
-``make pdfdocs``.  The formatted documentation can also be read online at:
-
-    https://www.kernel.org/doc/html/latest/
-
-There are various text files in the Documentation/ subdirectory,
-several of them using the Restructured Text markup notation.
-See Documentation/00-INDEX for a list of what is contained in each file.
-
-Please read the Documentation/process/changes.rst file, as it contains the
-requirements for building and running the kernel, and information about
-the problems which may result by upgrading your kernel.
+## Credits
+- Iam-nishan: forked from his Jujutsu-kernel 
+- SUSFS (simonpunk) and JackA1ltman's 4.19 backport patch
+- ReSukiSU/KSU developers
+- Wiregaurd developers and NoMount developers
+- developers of all features and modules built into the kernel
+- Linux kernel, GPLv2.
+## Notes
+Tested on my own cattail, custom ROM Android 16. should be stable but use at your own risk.

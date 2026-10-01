@@ -1,4 +1,4 @@
-CONFIG_LOCALVERSION="-Jujutsu-Kernel-V7@nishan_najmal"
+CONFIG_LOCALVERSION="-Jujutsu-Kernel-Forked-V8@Awmid original Iam-nishan/Jujutsu-kernel"
 CONFIG_DEBUG_KERNEL=y
 CONFIG_LOCALVERSION_AUTO=y
 CONFIG_PREEMPT=y
