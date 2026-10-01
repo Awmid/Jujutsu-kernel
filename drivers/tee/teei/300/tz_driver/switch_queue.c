@@ -95,7 +95,8 @@ static int teei_bind_current_cpu(void)
 	int cpu_id = 0;
 
 	/* Get current CPU ID */
-	cpu_id = smp_processor_id();
+ /* Thread is re-pinned right below, so a racy read is fine */
+	cpu_id = raw_smp_processor_id();
 
 	cpumask_clear(&mask);
 	cpumask_set_cpu(cpu_id, &mask);
