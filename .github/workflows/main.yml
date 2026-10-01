@@ -3,7 +3,7 @@ name: Build Jujutsu Kernel (ReSukiSU + SUSFS, ZyC Clang)
 on:
   push:
     branches:
-      - clang-test        # experiment branch, NOT V7
+      - V8        
   workflow_dispatch:
 
 env:
