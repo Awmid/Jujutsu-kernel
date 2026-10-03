@@ -7093,6 +7093,49 @@ user_cmd_unlock:
 	return ret;
 }
 
+/*
+ * Apply the user CCORR RGB gain through a cmdq handle, same locking as
+ * primary_display_user_cmd(). Returns 0 if written to hardware, 1 if the
+ * display is asleep (gain stored only, applied on resume), <0 on error.
+ */
+int primary_display_set_rgb_gain(int r, int g, int b)
+{
+	int ret = 0;
+	struct cmdqRecStruct *handle = NULL;
+
+	_primary_path_switch_dst_lock();
+	_primary_path_lock(__func__);
+
+	if (pgc->state == DISP_ALIVE &&
+		disp_helper_get_option(DISP_OPT_USE_CMDQ)) {
+		if (cmdqRecCreate(CMDQ_SCENARIO_PRIMARY_DISP, &handle) == 0) {
+			cmdqRecReset(handle);
+			_cmdq_insert_wait_frame_done_token_mira(handle);
+		} else {
+			handle = NULL;
+		}
+	}
+
+	if (handle && disp_helper_get_option(DISP_OPT_IDLEMGR_ENTER_ULPS) &&
+		!primary_display_is_video_mode())
+		primary_display_idlemgr_kick(__func__, 0);
+
+	ret = disp_ccorr_set_RGB_Gain(handle, r, g, b);
+
+	if (handle) {
+		/* non-blocking flush, same as primary_display_user_cmd() */
+		_cmdq_flush_config_handle_mira(handle, 0);
+		cmdqRecDestroy(handle);
+	} else if (ret == 0) {
+		ret = 1;
+	}
+
+	_primary_path_unlock(__func__);
+	_primary_path_switch_dst_unlock();
+
+	return ret;
+}
+
 int do_primary_display_switch_mode(int sess_mode, unsigned int session,
 	int need_lock, struct cmdqRecStruct *handle, int block)
 {

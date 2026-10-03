@@ -7,6 +7,9 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
+#include <linux/init.h>
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
 #ifdef CONFIG_MTK_CLKMGR
 #include <mach/mt_clkmgr.h>
 #else
@@ -524,6 +527,12 @@ static int g_rgb_matrix[3][3] = {
 	{0, 0, 1024} };
 static struct DISP_CCORR_COEF_T g_multiply_matrix_coef;
 static int g_disp_ccorr_without_gamma;
+/* set when the user RGB gain is non-identity (same CFG bit night light uses) */
+static int g_rgb_without_gamma;
+
+#define RGB_GAIN_UNITY	1024
+#define RGB_GAIN_MIN	256
+#define RGB_GAIN_MAX	1024
 
 static DECLARE_WAIT_QUEUE_HEAD(g_ccorr_get_irq_wq);
 static DEFINE_SPINLOCK(g_ccorr_get_irq_lock);
@@ -706,7 +715,7 @@ static int disp_ccorr_write_coef_reg(struct cmdqRecStruct *cmdq,
 	DISP_REG_SET(cmdq, DISP_REG_CCORR_EN + base_offset, 1);
 
 	cfg_val = 0x2 | g_ccorr_relay_value[index_of_ccorr(module)] |
-		     (g_disp_ccorr_without_gamma << 2);
+		     ((g_disp_ccorr_without_gamma | g_rgb_without_gamma) << 2);
 	DISP_REG_MASK(cmdq, DISP_REG_CCORR_CFG + base_offset, cfg_val, 0x7);
 
 	DISP_REG_SET(cmdq, CCORR_REG(ccorr_base, 0),
@@ -1007,20 +1016,87 @@ int disp_ccorr_set_color_matrix(void *cmdq, int32_t matrix[16], int32_t hint)
 	return ret;
 }
 
-int disp_ccorr_set_RGB_Gain(int r, int g, int b)
+/*
+ * Set a user RGB gain (1024 == 1.0) that is multiplied on top of the
+ * panel coefficients and the HWC color matrix, so night light / color
+ * mode updates do not wipe it.
+ * cmdq == NULL: only store the gain; it is written to the hardware by
+ * disp_ccorr_start() on the next power-on (display asleep).
+ * Returns 0 on success, negative errno on failure.
+ */
+int disp_ccorr_set_RGB_Gain(void *cmdq, int r, int g, int b)
 {
-	int ret;
+	int ret = 0;
+
+	r = CCORR_CLIP(r, RGB_GAIN_MIN, RGB_GAIN_MAX);
+	g = CCORR_CLIP(g, RGB_GAIN_MIN, RGB_GAIN_MAX);
+	b = CCORR_CLIP(b, RGB_GAIN_MIN, RGB_GAIN_MAX);
 
 	mutex_lock(&g_gamma_global_lock);
 	g_rgb_matrix[0][0] = r;
 	g_rgb_matrix[1][1] = g;
 	g_rgb_matrix[2][2] = b;
+	g_rgb_without_gamma = (r != RGB_GAIN_UNITY || g != RGB_GAIN_UNITY ||
+		b != RGB_GAIN_UNITY) ? 1 : 0;
 
 	CCORR_DBG("r[%d], g[%d], b[%d]", r, g, b);
-	ret = disp_ccorr_write_coef_reg(NULL, CCORR0_MODULE_NAMING, 0, 0);
+	if (cmdq != NULL)
+		ret = disp_ccorr_write_coef_reg(cmdq, CCORR0_MODULE_NAMING,
+			DISP_CCORR0, 0);
 	mutex_unlock(&g_gamma_global_lock);
 	return ret;
 }
+
+/* /sys/kernel/mtk_kcal/rgb : "R G B", each 256..1024 (1024 = unity) */
+static ssize_t rgb_show(struct kobject *kobj, struct kobj_attribute *attr,
+	char *buf)
+{
+	int r, g, b;
+
+	mutex_lock(&g_gamma_global_lock);
+	r = g_rgb_matrix[0][0];
+	g = g_rgb_matrix[1][1];
+	b = g_rgb_matrix[2][2];
+	mutex_unlock(&g_gamma_global_lock);
+
+	return scnprintf(buf, PAGE_SIZE, "%d %d %d\n", r, g, b);
+}
+
+static ssize_t rgb_store(struct kobject *kobj, struct kobj_attribute *attr,
+	const char *buf, size_t count)
+{
+	int r, g, b, ret;
+
+	if (sscanf(buf, "%d %d %d", &r, &g, &b) != 3)
+		return -EINVAL;
+	if (r < RGB_GAIN_MIN || r > RGB_GAIN_MAX ||
+		g < RGB_GAIN_MIN || g > RGB_GAIN_MAX ||
+		b < RGB_GAIN_MIN || b > RGB_GAIN_MAX)
+		return -EINVAL;
+
+	ret = primary_display_set_rgb_gain(r, g, b);
+	if (ret < 0)
+		return ret;
+	/* ret == 1: display asleep, gain stored, applied on resume */
+	if (ret == 0)
+		disp_ccorr_trigger_refresh(DISP_CCORR0);
+
+	return count;
+}
+
+static struct kobj_attribute rgb_attr = __ATTR(rgb, 0644, rgb_show, rgb_store);
+
+static int __init disp_ccorr_sysfs_init(void)
+{
+	struct kobject *kobj = kobject_create_and_add("mtk_kcal", kernel_kobj);
+
+	if (!kobj)
+		return -ENOMEM;
+	if (sysfs_create_file(kobj, &rgb_attr.attr))
+		kobject_put(kobj);
+	return 0;
+}
+late_initcall(disp_ccorr_sysfs_init);
 
 
 #ifdef CCORR_SUPPORT_PARTIAL_UPDATE
