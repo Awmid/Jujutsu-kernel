@@ -7094,11 +7094,11 @@ user_cmd_unlock:
 }
 
 /*
- * Apply the user CCORR RGB gain through a cmdq handle, same locking as
+ * Apply the user CCORR color state (RGB gain + saturation) through a cmdq handle, same locking as
  * primary_display_user_cmd(). Returns 0 if written to hardware, 1 if the
  * display is asleep (gain stored only, applied on resume), <0 on error.
  */
-int primary_display_set_rgb_gain(int r, int g, int b)
+int primary_display_set_user_color(int r, int g, int b, int sat)
 {
 	int ret = 0;
 	struct cmdqRecStruct *handle = NULL;
@@ -7120,7 +7120,7 @@ int primary_display_set_rgb_gain(int r, int g, int b)
 		!primary_display_is_video_mode())
 		primary_display_idlemgr_kick(__func__, 0);
 
-	ret = disp_ccorr_set_RGB_Gain(handle, r, g, b);
+	ret = disp_ccorr_set_user_color(handle, r, g, b, sat);
 
 	if (handle) {
 		/* non-blocking flush, same as primary_display_user_cmd() */

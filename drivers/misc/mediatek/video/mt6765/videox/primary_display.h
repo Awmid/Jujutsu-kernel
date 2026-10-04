@@ -400,7 +400,7 @@ int primary_display_is_sleepd(void);
 int primary_display_wait_for_vsync(void *config);
 unsigned int primary_display_get_ticket(void);
 int primary_display_user_cmd(unsigned int cmd, unsigned long arg);
-int primary_display_set_rgb_gain(int r, int g, int b);
+int primary_display_set_user_color(int r, int g, int b, int sat);
 int primary_display_trigger(int blocking, void *callback, int need_merge);
 int primary_display_switch_mode(int sess_mode, unsigned int session,
 	int force);
