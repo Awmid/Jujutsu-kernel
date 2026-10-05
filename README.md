@@ -5,7 +5,7 @@ Custom Linux kernel for blossom with KernelSU (ReSukiSU) and SUSFS
 - ReSukiSU + SUSFS 
 - NoMount
 - WireGuard
-- Other edits. Check commits
+- Other edits. Check releases/commits
 
 ## Credits
 - Iam-nishan: forked from his Jujutsu-kernel 
