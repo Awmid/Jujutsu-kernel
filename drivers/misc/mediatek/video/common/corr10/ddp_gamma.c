@@ -1256,7 +1256,7 @@ static struct kobj_attribute _name##_attr =\
 
 KCAL_SIMPLE_ATTR(hue, g_user_hue, HUE_MIN, HUE_MAX);
 KCAL_SIMPLE_ATTR(val, g_user_val, VAL_MIN, VAL_MAX);
-KCAL_SIMPLE_ATTR(min, g_user_min, 0, RGB_GAIN_UNITY);
+KCAL_SIMPLE_ATTR(min_gain, g_user_min, 0, RGB_GAIN_UNITY);
 KCAL_SIMPLE_ATTR(enable, g_user_enable, 0, 1);
 
 static struct kobj_attribute rgb_attr = __ATTR(rgb, 0644, rgb_show, rgb_store);
@@ -1264,7 +1264,7 @@ static struct kobj_attribute sat_attr = __ATTR(sat, 0644, sat_show, sat_store);
 
 static struct attribute *kcal_attrs[] = {
 	&rgb_attr.attr, &sat_attr.attr, &hue_attr.attr, &val_attr.attr,
-	&min_attr.attr, &enable_attr.attr, NULL,
+	&min_gain_attr.attr, &enable_attr.attr, NULL,
 };
 
 static const struct attribute_group kcal_group = { .attrs = kcal_attrs };
