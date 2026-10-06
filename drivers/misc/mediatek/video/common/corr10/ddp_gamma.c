@@ -535,10 +535,19 @@ static int g_rgb_without_gamma;
 #define RGB_GAIN_MAX	1024
 #define SAT_MIN		0
 #define SAT_MAX		1536	/* 1.5x; HW coef range is +-2.0 */
+#define HUE_MIN		(-180)	/* degrees */
+#define HUE_MAX		180
+#define VAL_MIN		256
+#define VAL_MAX		1280	/* >1.0 clips highlights; final coefs are clipped */
+#define GAIN_FLOOR_DEF	RGB_GAIN_MIN
 
 /* user color state, 1024 == 1.0 */
 static int g_user_gain[3] = { 1024, 1024, 1024 };
 static int g_user_sat = 1024;
+static int g_user_hue;			/* degrees, 0 == none */
+static int g_user_val = 1024;		/* uniform scale */
+static int g_user_min = GAIN_FLOOR_DEF;	/* lowest allowed RGB gain */
+static int g_user_enable = 1;		/* 0 == bypass all user color */
 
 static DECLARE_WAIT_QUEUE_HEAD(g_ccorr_get_irq_wq);
 static DEFINE_SPINLOCK(g_ccorr_get_irq_lock);
@@ -1022,32 +1031,92 @@ int disp_ccorr_set_color_matrix(void *cmdq, int32_t matrix[16], int32_t hint)
 	return ret;
 }
 
+/* sin(d) x 1024 for d = 0..90 degrees */
+static const short g_sin_tab[91] = {
+	0, 18, 36, 54, 71, 89, 107, 125, 143, 160, 178, 195, 213, 230, 248,
+	265, 282, 299, 316, 333, 350, 367, 384, 400, 416, 433, 449, 465, 481, 496,
+	512, 527, 543, 558, 573, 587, 602, 616, 630, 644, 658, 672, 685, 698, 711,
+	724, 737, 749, 761, 773, 784, 796, 807, 818, 828, 839, 849, 859, 868, 878,
+	887, 896, 904, 912, 920, 928, 935, 943, 949, 956, 962, 968, 974, 979, 984,
+	989, 994, 998, 1002, 1005, 1008, 1011, 1014, 1016, 1018, 1020, 1022, 1023, 1023, 1024,
+	1024,
+};
+
+static int disp_ccorr_sin(int deg)
+{
+	deg %= 360;
+	if (deg < 0)
+		deg += 360;
+	if (deg >= 180)
+		return -disp_ccorr_sin(deg - 180);
+	if (deg > 90)
+		deg = 180 - deg;
+	return g_sin_tab[deg];
+}
+
 /*
- * Rebuild g_rgb_matrix = Gain x Saturation (caller holds g_gamma_global_lock).
- * g_rgb_matrix is the last factor of coef x HWC matrix x g_rgb_matrix, so it
- * acts on the pixel first: saturate, then apply the per-channel gain.
+ * Rebuild g_rgb_matrix = val x Gain x Hue x Saturation (caller holds
+ * g_gamma_global_lock). g_rgb_matrix is the last factor of
+ * coef x HWC matrix x g_rgb_matrix, so it acts on the pixel first: saturate,
+ * rotate hue, then per-channel gain and uniform value scale.
  * Saturation matrix S = (1 - s) * ones x luma^T + s * I (rows sum to 1, so
  * white stays white). s == 0 -> grayscale, s == 1 -> identity.
+ * Hue matrix H = rotation about the gray axis (rows sum to 1, white stays
+ * white). The CCORR block has no offset registers, so only linear 3x3 terms
+ * are possible here (no contrast/invert).
  */
 static void disp_ccorr_rebuild_rgb_matrix(void)
 {
 	static const int luma[3] = { 218, 732, 74 };	/* Rec.709 x 1024 */
-	int i, j, s_ij;
+	int sat_m[3][3], hue_m[3][3], t[3][3];
+	int i, j, k, c, sn, kk, q, gv;
+
+	if (!g_user_enable) {
+		for (i = 0; i < 3; i++)
+			for (j = 0; j < 3; j++)
+				g_rgb_matrix[i][j] = (i == j) ? 1024 : 0;
+		g_rgb_without_gamma = 0;
+		return;
+	}
 
 	for (i = 0; i < 3; i++) {
 		for (j = 0; j < 3; j++) {
-			s_ij = (1024 - g_user_sat) * luma[j];
+			sat_m[i][j] = (1024 - g_user_sat) * luma[j];
 			if (i == j)
-				s_ij += g_user_sat * 1024;
-			s_ij = DIV_ROUND_CLOSEST(s_ij, 1024);
-			g_rgb_matrix[i][j] = DIV_ROUND_CLOSEST(
-				g_user_gain[i] * s_ij, 1024);
+				sat_m[i][j] += g_user_sat * 1024;
+			sat_m[i][j] = DIV_ROUND_CLOSEST(sat_m[i][j], 1024);
 		}
+	}
+
+	c = disp_ccorr_sin(g_user_hue + 90);
+	sn = disp_ccorr_sin(g_user_hue);
+	kk = DIV_ROUND_CLOSEST(1024 - c, 3);
+	q = DIV_ROUND_CLOSEST(sn * 591, 1024);	/* 1/sqrt(3) x 1024 */
+	hue_m[0][0] = c + kk;  hue_m[0][1] = kk - q;  hue_m[0][2] = kk + q;
+	hue_m[1][0] = kk + q;  hue_m[1][1] = c + kk;  hue_m[1][2] = kk - q;
+	hue_m[2][0] = kk - q;  hue_m[2][1] = kk + q;  hue_m[2][2] = c + kk;
+
+	for (i = 0; i < 3; i++) {
+		for (j = 0; j < 3; j++) {
+			int acc = 0;
+
+			for (k = 0; k < 3; k++)
+				acc += hue_m[i][k] * sat_m[k][j];
+			t[i][j] = DIV_ROUND_CLOSEST(acc, 1024);
+		}
+	}
+
+	for (i = 0; i < 3; i++) {
+		gv = DIV_ROUND_CLOSEST(g_user_gain[i] * g_user_val, 1024);
+		for (j = 0; j < 3; j++)
+			g_rgb_matrix[i][j] = DIV_ROUND_CLOSEST(gv * t[i][j],
+				1024);
 	}
 	g_rgb_without_gamma = (g_user_gain[0] != RGB_GAIN_UNITY ||
 		g_user_gain[1] != RGB_GAIN_UNITY ||
 		g_user_gain[2] != RGB_GAIN_UNITY ||
-		g_user_sat != 1024) ? 1 : 0;
+		g_user_sat != 1024 || g_user_hue != 0 ||
+		g_user_val != 1024) ? 1 : 0;
 }
 
 /*
@@ -1060,12 +1129,11 @@ int disp_ccorr_set_user_color(void *cmdq, int r, int g, int b, int sat)
 {
 	int ret = 0;
 
-	r = CCORR_CLIP(r, RGB_GAIN_MIN, RGB_GAIN_MAX);
-	g = CCORR_CLIP(g, RGB_GAIN_MIN, RGB_GAIN_MAX);
-	b = CCORR_CLIP(b, RGB_GAIN_MIN, RGB_GAIN_MAX);
-	sat = CCORR_CLIP(sat, SAT_MIN, SAT_MAX);
-
 	mutex_lock(&g_gamma_global_lock);
+	r = CCORR_CLIP(r, g_user_min, RGB_GAIN_MAX);
+	g = CCORR_CLIP(g, g_user_min, RGB_GAIN_MAX);
+	b = CCORR_CLIP(b, g_user_min, RGB_GAIN_MAX);
+	sat = CCORR_CLIP(sat, SAT_MIN, SAT_MAX);
 	g_user_gain[0] = r;
 	g_user_gain[1] = g;
 	g_user_gain[2] = b;
@@ -1119,9 +1187,9 @@ static ssize_t rgb_store(struct kobject *kobj, struct kobj_attribute *attr,
 
 	if (sscanf(buf, "%d %d %d", &r, &g, &b) != 3)
 		return -EINVAL;
-	if (r < RGB_GAIN_MIN || r > RGB_GAIN_MAX ||
-		g < RGB_GAIN_MIN || g > RGB_GAIN_MAX ||
-		b < RGB_GAIN_MIN || b > RGB_GAIN_MAX)
+	if (r < g_user_min || r > RGB_GAIN_MAX ||
+		g < g_user_min || g > RGB_GAIN_MAX ||
+		b < g_user_min || b > RGB_GAIN_MAX)
 		return -EINVAL;
 
 	disp_ccorr_get_user_color(&cr, &cg, &cb, &sat);
@@ -1152,8 +1220,54 @@ static ssize_t sat_store(struct kobject *kobj, struct kobj_attribute *attr,
 	return user_color_apply(r, g, b, sat, count);
 }
 
+/*
+ * hue / val / min / enable: set the field under the lock, then re-apply the
+ * current rgb + sat so the matrix is rebuilt and written the usual way.
+ */
+#define KCAL_SIMPLE_ATTR(_name, _var, _lo, _hi)\
+static ssize_t _name##_show(struct kobject *kobj,\
+	struct kobj_attribute *attr, char *buf)\
+{\
+	int v;\
+\
+	mutex_lock(&g_gamma_global_lock);\
+	v = _var;\
+	mutex_unlock(&g_gamma_global_lock);\
+	return scnprintf(buf, PAGE_SIZE, "%d\n", v);\
+}\
+\
+static ssize_t _name##_store(struct kobject *kobj,\
+	struct kobj_attribute *attr, const char *buf, size_t count)\
+{\
+	int v, r, g, b, sat;\
+\
+	if (kstrtoint(buf, 10, &v))\
+		return -EINVAL;\
+	if (v < (_lo) || v > (_hi))\
+		return -EINVAL;\
+	mutex_lock(&g_gamma_global_lock);\
+	_var = v;\
+	mutex_unlock(&g_gamma_global_lock);\
+	disp_ccorr_get_user_color(&r, &g, &b, &sat);\
+	return user_color_apply(r, g, b, sat, count);\
+}\
+static struct kobj_attribute _name##_attr =\
+	__ATTR(_name, 0644, _name##_show, _name##_store)
+
+KCAL_SIMPLE_ATTR(hue, g_user_hue, HUE_MIN, HUE_MAX);
+KCAL_SIMPLE_ATTR(val, g_user_val, VAL_MIN, VAL_MAX);
+KCAL_SIMPLE_ATTR(min, g_user_min, 0, RGB_GAIN_UNITY);
+KCAL_SIMPLE_ATTR(enable, g_user_enable, 0, 1);
+
 static struct kobj_attribute rgb_attr = __ATTR(rgb, 0644, rgb_show, rgb_store);
 static struct kobj_attribute sat_attr = __ATTR(sat, 0644, sat_show, sat_store);
+
+static struct attribute *kcal_attrs[] = {
+	&rgb_attr.attr, &sat_attr.attr, &hue_attr.attr, &val_attr.attr,
+	&min_attr.attr, &enable_attr.attr, NULL,
+};
+
+static const struct attribute_group kcal_group = { .attrs = kcal_attrs };
 
 static int __init disp_ccorr_sysfs_init(void)
 {
@@ -1161,8 +1275,7 @@ static int __init disp_ccorr_sysfs_init(void)
 
 	if (!kobj)
 		return -ENOMEM;
-	if (sysfs_create_file(kobj, &rgb_attr.attr) ||
-		sysfs_create_file(kobj, &sat_attr.attr))
+	if (sysfs_create_group(kobj, &kcal_group))
 		kobject_put(kobj);
 	return 0;
 }
