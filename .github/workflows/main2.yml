@@ -1,4 +1,4 @@
-name: Build Jujutsu Kernel without KernelSU-Next
+name: Build Jujutsu Kernel without KernelSU (ZyC Clang)
 
 on:
   workflow_dispatch:
@@ -8,6 +8,9 @@ env:
   KERNEL_ARCH: "arm64"
   KBUILD_BUILD_USER: "github-actions"
   KBUILD_BUILD_HOST: "ci-server"
+  # Fill this in from https://github.com/ZyCromerZ/Clang/releases
+  # Copy the exact asset URL of ONE release tag. Never use "latest".
+  ZYC_CLANG_URL: "https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260807-release/Clang-16.0.6-20260807.tar.gz"
 
 jobs:
   build_and_package:
@@ -23,57 +26,118 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update
           sudo apt-get install -y bc bison flex build-essential libssl-dev libelf-dev cpio kmod git zip curl ca-certificates jq \
-            wget libffi-dev zlib1g-dev libreadline-dev libsqlite3-dev libbz2-dev libncurses5-dev libgdbm-dev liblzma-dev tk-dev
+            zstd xz-utils lld ccache \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
 
       - name: Configure git
         run: |
           git config --global url."https://".insteadOf git://
+          
+      - name: Configure Compiler Cache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.ccache
+          key: ${{ runner.os }}-kernel-ccache-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-kernel-ccache-
 
-      - name: Clone crdroid Clang
+      - name: Cache ZyC Clang
+        id: clang-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/clang
+          # Bump this string whenever you change ZYC_CLANG_URL
+          key: zyc-clang-16.0.6-20260807            
+
+      - name: Download ZyC Clang
+        if: steps.clang-cache.outputs.cache-hit != 'true'
         run: |
-          echo "Cloning crdroid Clang..."
-          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r428724.git /tmp/clang
+          set -eo pipefail
+          mkdir -p /tmp/clang
+          curl -fL --retry 3 -o /tmp/zyc_clang.tar "$ZYC_CLANG_URL"
+          tar -C /tmp/clang -xf /tmp/zyc_clang.tar
+          rm -f /tmp/zyc_clang.tar
 
-      - name: Clone LineageOS GCC toolchains
+      - name: Add clang to PATH
         run: |
-          echo "Cloning GCC ARM64..."
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git /tmp/gcc-aarch64
-
-          echo "Cloning GCC ARM32..."
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git /tmp/gcc-arm
-
-      - name: Verify toolchains
+          if [ ! -x /tmp/clang/bin/clang ]; then
+            echo "::error::clang not found in /tmp/clang/bin"
+            exit 1
+          fi
+          echo "/tmp/clang/bin" >> "$GITHUB_PATH"
+          
+      - name: Verify toolchain
         run: |
-          /tmp/clang/bin/clang --version
-          /tmp/gcc-aarch64/bin/aarch64-linux-android-gcc --version
-          /tmp/gcc-arm/bin/arm-linux-androideabi-gcc --version
+          clang --version
+          ld.lld --version || true
+          aarch64-linux-gnu-gcc --version | head -1
+          arm-linux-gnueabi-gcc --version | head -1
 
-      - name: Remove KernelSU-Next
+      - name: Remove KernelSU
         run: |
           chmod u+x clean.sh
           bash clean.sh
 
+      - name: Strip -Werror from vendor drivers
+        # We explicitly use bash and allow it to continue even if a single file has an issue
+        shell: bash
+        run: |
+          echo "Stripping -Werror flags from Makefiles safely..."
+          # Using -type f -not -type l skips broken symlinks completely
+          find drivers -type f -not -type l \( -name 'Makefile*' -o -name 'Kbuild*' \) -print0 | while IFS= read -r -d '' file; do
+            # Run sed individually on files, ignoring errors so one bad file won't crash the pipeline
+            sed -i 's/-Werror[^ ]*//g' "$file" 2>/dev/null || true
+          done
+          echo "Finished processing driver Makefiles."
+
       - name: Build kernel
         run: |
-          export PATH="/tmp/clang/bin:/tmp/gcc-aarch64/bin:/tmp/gcc-arm/bin:${PATH}"
-
+          set -eo pipefail
           export ARCH=${KERNEL_ARCH}
-          export CROSS_COMPILE="aarch64-linux-android-"
-          export CROSS_COMPILE_ARM32="arm-linux-androideabi-"
-          export CC="clang"
           export CLANG_TRIPLE="aarch64-linux-gnu-"
+          export CROSS_COMPILE="aarch64-linux-gnu-"
+          export CROSS_COMPILE_ARM32="arm-linux-gnueabi-"
+          
+          export CCACHE_DIR=/home/runner/.ccache
+          export CCACHE_MAXSIZE=3G
+          export CCACHE_COMPILERCHECK=content
+          export CCACHE_NOHASHDIR=1
+          export CCACHE_BASEDIR="$PWD"
+          export CCACHE_SLOPPINESS=time_macros,include_file_mtime,include_file_ctime
+          echo "=== CCACHE INITIAL STATS ==="
+          ccache -s                  # Prints stats before the build starts
+          
+          MAKE_ARGS=(
+            O=out
+            ARCH=${ARCH}
+            CC="ccache clang"
+            HOSTCC=clang
+            HOSTCXX=clang++
+            LD=ld.lld
+            AR=llvm-ar
+            NM=llvm-nm
+            OBJCOPY=llvm-objcopy
+            OBJDUMP=llvm-objdump
+            OBJSIZE=llvm-size
+            READELF=llvm-readelf
+            STRIP=llvm-strip
+            CLANG_TRIPLE=${CLANG_TRIPLE}
+            CROSS_COMPILE=${CROSS_COMPILE}
+            CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32}
+            KCFLAGS="-Wno-error"
+          )
+          make "${MAKE_ARGS[@]}" ${KERNEL_DEFCONFIG}
+          echo "Building Jujutsu Kernel without KernelSU (ZyC Clang)..."
+          ccache -z
+          make -j"$(nproc)" "${MAKE_ARGS[@]}" 2>&1 | tee build.log
 
-          make O=out ARCH=${ARCH} ${KERNEL_DEFCONFIG}
+          echo "=== CCACHE FINAL STATS ===" | tee -a build.log
+          ccache -s | tee -a build.log
 
-          echo "Building Jujutsu Kernel without KernelSU-Next..."
-          make -j$(nproc) \
-            O=out \
-            ARCH=${ARCH} \
-            CC=clang \
-            CLANG_TRIPLE=${CLANG_TRIPLE} \
-            CROSS_COMPILE=${CROSS_COMPILE} \
-            CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32} \
-            2>&1 | tee build.log
+      - name: Show first errors
+        if: failure()
+        run: |
+          grep -nE "error:|Error [0-9]|undefined reference" build.log | head -40 || true
 
       - name: Package AnyKernel3
         run: |
@@ -99,7 +163,7 @@ jobs:
           cp ../out/arch/${KERNEL_ARCH}/boot/dtb*.img . 2>/dev/null || echo "No DTB files"
 
           cat > anykernel.sh << 'EOF'
-          properties() {
+          properties() { '
           kernel.string=Jujutsu Kernel for blossom - Awmid fork of Iam-nishan JJK
           do.devicecheck=1
           device.name1=blossom
@@ -112,7 +176,7 @@ jobs:
           do.systemless=1
           do.cleanup=1
           do.cleanuponabort=0
-          }
+          '; }
 
           block=/dev/block/by-name/boot;
           is_slot_device=0;
