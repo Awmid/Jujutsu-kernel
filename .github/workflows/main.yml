@@ -1,4 +1,4 @@
-name: Build Jujutsu Kernel (ReSukiSU + SUSFS, ZyC Clang)
+name: Build Jujutsu Kernel (BakaSu + SUSFS, ZyC Clang)
 
 on:
   push:
@@ -15,7 +15,7 @@ env:
   # Copy the exact asset URL of ONE release tag. Never use "latest".
   ZYC_CLANG_URL: "https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260807-release/Clang-16.0.6-20260807.tar.gz"
   # ReSukiSU commit, must match the vendored SUSFS files
-  RESUKISU_COMMIT: "373303c525d05c8b47801305f506ef9124dbd6e6"
+  BAKASU_COMMIT: "373303c525d05c8b47801305f506ef9124dbd6e6"
 
 jobs:
   build_and_package:
@@ -83,10 +83,10 @@ jobs:
           aarch64-linux-gnu-gcc --version | head -1
           arm-linux-gnueabi-gcc --version | head -1
 
-      - name: Integrate ReSukiSU (pinned)
+      - name: Integrate BakaSu (pinned)
         run: |
           set -eo pipefail
-          curl -fLSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/${RESUKISU_COMMIT}/kernel/setup.sh" | bash -s "${RESUKISU_COMMIT}"
+          curl -fLSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/${BAKASU_COMMIT}/kernel/setup.sh" | bash -s "${RESUKISU_COMMIT}"
 
       - name: Strip -Werror from vendor drivers
         # We explicitly use bash and allow it to continue even if a single file has an issue
