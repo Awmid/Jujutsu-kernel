@@ -29,7 +29,7 @@ jobs:
       - name: Integrate NoMount
         run: |
           set -eo pipefail
-          curl -fLSs "https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh" | bash -s v2.1.0
+          curl -fLSs "https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh"
 
       - name: Install dependencies
         run: |
