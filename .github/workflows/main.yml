@@ -15,7 +15,7 @@ env:
   # Copy the exact asset URL of ONE release tag. Never use "latest".
   ZYC_CLANG_URL: "https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260807-release/Clang-16.0.6-20260807.tar.gz"
   # ReSukiSU commit, must match the vendored SUSFS files
-  RESUKISU_COMMIT: "239e1e8871b8fcd51a6e5b3002e0ba522fdd99fb"
+  RESUKISU_COMMIT: "373303c525d05c8b47801305f506ef9124dbd6e6"
 
 jobs:
   build_and_package:
