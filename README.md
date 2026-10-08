@@ -1,8 +1,8 @@
 # Jujutsu Kernel
-Custom Linux kernel for blossom with KernelSU (ReSukiSU) and SUSFS
+Custom Linux kernel for blossom with BakaSu (previously ResukiSu) and SUSFS
 
 ## Features
-- ReSukiSU + SUSFS 
+- BakaSu + SUSFS 
 - NoMount
 - WireGuard
 - Other edits. Check releases/commits
@@ -10,7 +10,7 @@ Custom Linux kernel for blossom with KernelSU (ReSukiSU) and SUSFS
 ## Credits
 - Iam-nishan: forked from his Jujutsu-kernel 
 - SUSFS (simonpunk) and JackA1ltman's 4.19 backport patch
-- ReSukiSU/KSU developers
+- BakaSu/KSU developers
 - Wiregaurd developers and NoMount developers
 - developers of all features and modules built into the kernel
 - Linux kernel, GPLv2.

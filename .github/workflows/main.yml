@@ -14,7 +14,7 @@ env:
   # Fill this in from https://github.com/ZyCromerZ/Clang/releases
   # Copy the exact asset URL of ONE release tag. Never use "latest".
   ZYC_CLANG_URL: "https://github.com/ZyCromerZ/Clang/releases/download/16.0.6-20260807-release/Clang-16.0.6-20260807.tar.gz"
-  # ReSukiSU commit, must match the vendored SUSFS files
+  # BakaSu commit, must match the vendored SUSFS files
   BAKASU_COMMIT: "373303c525d05c8b47801305f506ef9124dbd6e6"
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
       - name: Integrate NoMount
         run: |
           set -eo pipefail
-          curl -fLSs "https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh" | bash -s v2.0.0
+          curl -fLSs "https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh" | bash -s v2.1.0
 
       - name: Install dependencies
         run: |
@@ -86,7 +86,7 @@ jobs:
       - name: Integrate BakaSu (pinned)
         run: |
           set -eo pipefail
-          curl -fLSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/${BAKASU_COMMIT}/kernel/setup.sh" | bash -s "${RESUKISU_COMMIT}"
+          curl -fLSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/${BAKASU_COMMIT}/kernel/setup.sh" | bash -s "${BAKASU_COMMIT}"
 
       - name: Strip -Werror from vendor drivers
         # We explicitly use bash and allow it to continue even if a single file has an issue
